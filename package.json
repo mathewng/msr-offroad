@@ -1,0 +1,17 @@
+{
+    "name": "x",
+    "private": true,
+    "scripts": {
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "benchmark": "bun --expose-gc memory-benchmark.ts",
+        "backtest": "bun backtest.ts"
+    },
+    "devDependencies": {
+        "@types/bun": "latest",
+        "prettier": "^3.7.4"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    }
+}
