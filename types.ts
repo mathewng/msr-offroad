@@ -81,4 +81,6 @@ export interface BacktestConfig {
     };
     minScoreThreshold: number; // Hard floor for the final EV score before a bet is considered
     relativeThreshold?: number; // Optional edge required over the race average score
+    empiricalWinRates?: Record<number, number>; // Baseline win rates for each slot (1-6)
+    priorWeight?: number; // The strength of the prior (virtual observations) for Laplace smoothing
 }

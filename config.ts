@@ -1,4 +1,4 @@
-import type { BacktestConfig } from "./types";
+import type { BacktestConfig, Race } from "./types";
 
 /**
  * Common configuration defaults shared across different strategies.
@@ -27,7 +27,45 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     // Races are done 3 at a time, so this is 3 races per chunk.
     // The payouts for the next 3 races are also released at the same time.
     chunkSize: 3,
+
+    // Default baseline win rates. These are fallback values.
+    empiricalWinRates: {
+        1: (1/6),
+        2: (1/6),
+        3: (1/6),
+        4: (1/6),
+        5: (1/6),
+        6: (1/6),
+    },
+
+    // The weight of the prior (fictitious sample size) for smoothing.
+    // Higher values make the model stickier to historical averages.
+    priorWeight: 10.0,
 };
+
+/**
+ * Derives historical win rates from a dataset to populate the config.
+ */
+export function calculateEmpiricalWinRates(races: Race[]): Record<number, number> {
+    const counts: Record<number, { wins: number; total: number }> = {};
+    for (let s = 1; s <= 6; s++) counts[s] = { wins: 0, total: 0 };
+
+    for (const r of races) {
+        if (r.winningSlot === null) continue;
+        for (let s = 1; s <= 6; s++) {
+            counts[s]!.total++;
+            if (s === r.winningSlot) counts[s]!.wins++;
+        }
+    }
+
+    const rates: Record<number, number> = {};
+    for (let s = 1; s <= 6; s++) {
+        const { wins, total } = counts[s]!;
+        // Use a tiny amount of smoothing to avoid 0%
+        rates[s] = total > 0 ? (wins + 0.1) / (total + 0.6) : (1/6);
+    }
+    return rates;
+}
 
 /**
  * Strategy: HIGHEST YIELD

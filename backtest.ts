@@ -1,4 +1,4 @@
-import { CONFIG_EFFICIENCY, CONFIG_HIGHEST_YIELD } from "./config";
+import { CONFIG_EFFICIENCY, CONFIG_HIGHEST_YIELD, calculateEmpiricalWinRates } from "./config";
 import { predictRace } from "./prediction-engine";
 import type { BacktestConfig, Race } from "./types";
 import { calculateStats, formatCurrency, getPayoutBucket, parseLines, updateStats } from "./utils";
@@ -120,6 +120,9 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
         process.exit(1);
     }
 
+    // Dynamic configuration update: Calculate empirical win rates from the historical data provided
+    config.empiricalWinRates = calculateEmpiricalWinRates(previousMonthsRaces);
+
     // Initialize the worker pool for parallel HMM training
     const pool = new WorkerPool(config.maxWorkers, "./hmm-worker.ts");
     const history = [...previousMonthsRaces];
@@ -144,7 +147,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
     const aggregatedProbs = new Float64Array(config.hmmObservations);
 
     // Calculate initial statistical win rates from history
-    let currentStats = calculateStats(history);
+    let currentStats = calculateStats(history, config);
     console.log(`Loaded history: ${history.length}, Target: ${currentMonthRaces.length}. Using ${config.maxWorkers} cores.`);
     ResultPrinter.printHeader();
 
@@ -224,7 +227,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
             // Walk-forward: Add the new result to the HMM sequence and update historical stats
             if (!isPending) {
                 sequence.push((currentRace.winningSlot! - 1) * 3 + getPayoutBucket(currentRace.winningPayout!, currentRace.winningSlot!));
-                updateStats(currentStats, currentRace);
+                updateStats(currentStats, currentRace, config);
             }
             history.push(currentRace);
         }
@@ -294,6 +297,15 @@ function parseArgs() {
         }
     }
 
+    // Parse prior weight override
+    const priorMatch = args.find((a) => a.startsWith("--prior-weight="));
+    if (priorMatch && priorMatch.includes("=") && priorMatch.split("=")[1]!.trim() !== "") {
+        const weight = parseFloat(priorMatch.split("=")[1]!);
+        if (!isNaN(weight)) {
+            config = { ...config, priorWeight: weight };
+        }
+    }
+
     return {
         prevFile: fileArgs[0],
         currFile: fileArgs[1],
@@ -306,13 +318,21 @@ function parseArgs() {
 const { prevFile, currFile, config, showConfigOnly } = parseArgs();
 
 if (showConfigOnly) {
+    const previousMonthsRaces = await loadRaces(prevFile);
+    // Note: We don't need currentMonthRaces to print config, but calculateEmpiricalWinRates needs history.
+    // If only one file is provided with -pco, we can use it.
+    
+    if (previousMonthsRaces.length > 0) {
+         config.empiricalWinRates = calculateEmpiricalWinRates(previousMonthsRaces);
+    }
+    
     console.log(JSON.stringify(config, null, 2));
     process.exit(0);
 }
 
 if (!prevFile || !currFile) {
     console.error(
-        "Usage: bun backtest.ts <previous_month_data> <current_month_data> [--efficiency|--yield] [--historical-weight=<value>] [--hmm-weight=<value>] [--momentum-weight=<value>] [--min-score=<value>] [--relative-threshold=<value>]",
+        "Usage: bun backtest.ts <previous_month_data> <current_month_data> [--efficiency|--yield] [--historical-weight=<value>] [--hmm-weight=<value>] [--momentum-weight=<value>] [--min-score=<value>] [--relative-threshold=<value>] [--prior-weight=<value>]",
     );
     process.exit(1);
 }

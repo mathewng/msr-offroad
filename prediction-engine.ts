@@ -48,7 +48,8 @@ export function predictRace(currentRace: Race, stats: StatsResult, aggregatedPro
         const rStat = stats.roundMap[currentRace.raceNumber]?.[slot];
 
         // Start with the base win rate for this slot in this payout bucket
-        let winRate = bStat?.winRate ?? 0.166;
+        // Fallback to the empirical prior from config for this slot if no bucket-specific data exists
+        let winRate = bStat?.winRate ?? (config.empiricalWinRates?.[slot] ?? (1/6));
 
         // Blend in Venue context (20% weight) if we have enough samples
         if (vStat && vStat.occurrences >= 2) {

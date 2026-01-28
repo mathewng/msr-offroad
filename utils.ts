@@ -1,4 +1,4 @@
-import type { BucketStat, Race, RaceTime, SlotStat, StatsResult } from "./types";
+import type { BucketStat, Race, RaceTime, SlotStat, StatsResult, BacktestConfig } from "./types";
 
 /**
  * Parses raw lines from a data file into an array of Race objects.
@@ -96,7 +96,7 @@ export function getPayoutBucket(payout: number, slot: number): number {
  *
  * Uses Laplace Smoothing to prevent 0% or 100% probabilities in cases with low sample sizes.
  */
-export function calculateStats(allRaces: Race[]): StatsResult {
+export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsResult {
     const bucketMap: Record<number, Record<number, BucketStat>> = {};
     const slotMap: Record<number, SlotStat> = {};
     const venueMap: Record<string, Record<number, SlotStat>> = {};
@@ -147,30 +147,33 @@ export function calculateStats(allRaces: Race[]): StatsResult {
     }
 
     /**
-     * Laplace Smoothing (Additive Smoothing):
-     * Formula: (wins + alpha) / (total + alpha * k)
-     * Here alpha=0.5 and alpha*k=3 (suggesting k=6 possible winners).
-     * This ensures that even with 0 observations, we assume a baseline probability (~16.6%).
+     * Laplace Smoothing (Additive Smoothing) with Empirical Prior:
+     * Formula: (wins + alpha * prior) / (total + alpha)
+     * We use a total weight (alpha) of config.priorWeight (default 10.0).
      */
-    const smooth = (wins: number, total: number) => (wins + 0.5) / (total + 3);
+    const smooth = (wins: number, total: number, slot: number) => {
+        const prior = config.empiricalWinRates?.[slot] ?? 0.166;
+        const alpha = config.priorWeight ?? 10.0;
+        return (wins + alpha * prior) / (total + alpha);
+    };
 
     for (let s = 1; s <= 6; s++) {
-        slotMap[s]!.winRate = smooth(slotMap[s]!.wins, slotMap[s]!.occurrences);
+        slotMap[s]!.winRate = smooth(slotMap[s]!.wins, slotMap[s]!.occurrences, s);
         for (let b = 0; b < 3; b++) {
             const bStats = bucketMap[s]![b]!;
-            bStats.winRate = smooth(bStats.wins, bStats.occurrences);
+            bStats.winRate = smooth(bStats.wins, bStats.occurrences, s);
         }
     }
     for (const v in venueMap) {
         for (let s = 1; s <= 6; s++) {
             const vStats = venueMap[v]![s]!;
-            vStats.winRate = smooth(vStats.wins, vStats.occurrences);
+            vStats.winRate = smooth(vStats.wins, vStats.occurrences, s);
         }
     }
     for (const rnd in roundMap) {
         for (let s = 1; s <= 6; s++) {
             const rStats = roundMap[rnd]![s]!;
-            rStats.winRate = smooth(rStats.wins, rStats.occurrences);
+            rStats.winRate = smooth(rStats.wins, rStats.occurrences, s);
         }
     }
 
@@ -180,17 +183,18 @@ export function calculateStats(allRaces: Race[]): StatsResult {
 /**
  * Initializes empty statistics for a new session.
  */
-export function initializeStats(): StatsResult {
+export function initializeStats(config: BacktestConfig): StatsResult {
     const bucketMap: Record<number, Record<number, BucketStat>> = {};
     const slotMap: Record<number, SlotStat> = {};
 
     for (let s = 1; s <= 6; s++) {
+        const prior = config.empiricalWinRates?.[s] ?? (1/6);
         bucketMap[s] = {
-            0: { occurrences: 0, wins: 0, winRate: 0.166 },
-            1: { occurrences: 0, wins: 0, winRate: 0.166 },
-            2: { occurrences: 0, wins: 0, winRate: 0.166 },
+            0: { occurrences: 0, wins: 0, winRate: prior },
+            1: { occurrences: 0, wins: 0, winRate: prior },
+            2: { occurrences: 0, wins: 0, winRate: prior },
         };
-        slotMap[s] = { occurrences: 0, wins: 0, winRate: 0.166 };
+        slotMap[s] = { occurrences: 0, wins: 0, winRate: prior };
     }
 
     return {
@@ -206,7 +210,7 @@ export function initializeStats(): StatsResult {
  * Updates an existing StatsResult with a new race outcome.
  * Used during walk-forward testing/deployment.
  */
-export function updateStats(stats: StatsResult, r: Race): StatsResult {
+export function updateStats(stats: StatsResult, r: Race, config: BacktestConfig): StatsResult {
     if (r.winningSlot === null || r.winningPayout === null) return stats;
 
     const winningSlot = r.winningSlot;
@@ -216,24 +220,30 @@ export function updateStats(stats: StatsResult, r: Race): StatsResult {
     if (r.venue && !stats.venueMap[r.venue]) {
         stats.venueMap[r.venue] = {};
         for (let s = 1; s <= 6; s++) {
-            stats.venueMap[r.venue]![s] = { occurrences: 0, wins: 0, winRate: 0.166 };
+            const prior = config.empiricalWinRates?.[s] ?? (1/6);
+            stats.venueMap[r.venue]![s] = { occurrences: 0, wins: 0, winRate: prior };
         }
     }
     if (!stats.roundMap[r.raceNumber]) {
         stats.roundMap[r.raceNumber] = {};
         for (let s = 1; s <= 6; s++) {
-            stats.roundMap[r.raceNumber]![s] = { occurrences: 0, wins: 0, winRate: 0.166 };
+            const prior = config.empiricalWinRates?.[s] ?? (1/6);
+            stats.roundMap[r.raceNumber]![s] = { occurrences: 0, wins: 0, winRate: prior };
         }
     }
 
-    const smooth = (wins: number, total: number) => (wins + 0.5) / (total + 3);
+    const smooth = (wins: number, total: number, slot: number) => {
+        const prior = config.empiricalWinRates?.[slot] ?? 0.166;
+        const alpha = config.priorWeight ?? 10.0;
+        return (wins + alpha * prior) / (total + alpha);
+    };
 
     for (let s = 1; s <= 6; s++) {
         // Update Slot Global Stats
         const sStat = stats.slotMap[s]!;
         sStat.occurrences++;
         if (s === winningSlot) sStat.wins++;
-        sStat.winRate = smooth(sStat.wins, sStat.occurrences);
+        sStat.winRate = smooth(sStat.wins, sStat.occurrences, s);
 
         // Update Bucket Stats
         const payout = r.payouts[s - 1] ?? 0;
@@ -241,14 +251,14 @@ export function updateStats(stats: StatsResult, r: Race): StatsResult {
         const bStat = stats.bucketMap[s]![bucket]!;
         bStat.occurrences++;
         if (s === winningSlot) bStat.wins++;
-        bStat.winRate = smooth(bStat.wins, bStat.occurrences);
+        bStat.winRate = smooth(bStat.wins, bStat.occurrences, s);
 
         // Update Venue Stats
         if (r.venue) {
             const vStat = stats.venueMap[r.venue]![s]!;
             vStat.occurrences++;
             if (s === winningSlot) vStat.wins++;
-            vStat.winRate = smooth(vStat.wins, vStat.occurrences);
+            vStat.winRate = smooth(vStat.wins, vStat.occurrences, s);
         }
 
         // Update Round Stats
@@ -256,12 +266,13 @@ export function updateStats(stats: StatsResult, r: Race): StatsResult {
             const rndStat = stats.roundMap[r.raceNumber]![s]!;
             rndStat.occurrences++;
             if (s === winningSlot) rndStat.wins++;
-            rndStat.winRate = smooth(rndStat.wins, rndStat.occurrences);
+            rndStat.winRate = smooth(rndStat.wins, rndStat.occurrences, s);
         }
     }
 
     return stats;
 }
+
 
 export function formatCurrency(value: number): string {
     return value.toFixed(2);
