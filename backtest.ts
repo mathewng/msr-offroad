@@ -43,7 +43,6 @@ async function loadRaces(filePath: string | undefined): Promise<Race[]> {
  * Optimized with string builder pattern to reduce memory allocations.
  */
 class ResultPrinter {
-    private static outputBuffer: string[] = [];
     private static readonly SEPARATOR = "-".repeat(126);
     private static readonly HEADER = `${"Day".padStart(3)} | ${"Venue".padEnd(14)} | ${"Time".padEnd(5)} | R | ${"Bets".padEnd(7)} | ${"Act".padStart(3)} | ${"Pay".padStart(4)} | ${"Score".padStart(6)} | ${"Win?".padEnd(4)} | ${"Profit".padStart(8)} | ${"Cumulative".padStart(10)} | ${"Status".padEnd(8)}`;
 
@@ -51,10 +50,7 @@ class ResultPrinter {
      * Prints the table header for the race-by-race output.
      */
     static printHeader() {
-        this.outputBuffer.length = 0;
-        this.outputBuffer.push(this.SEPARATOR, this.HEADER, this.SEPARATOR);
-        console.log(this.outputBuffer.join("\n"));
-        this.outputBuffer.length = 0;
+        console.log([this.SEPARATOR, this.HEADER, this.SEPARATOR].join('\n'));
     }
 
     /**
@@ -65,27 +61,15 @@ class ResultPrinter {
         const isPending = winningSlot === null;
         const winStatus = isPending ? "-" : raceProfit > 0 || (bets.includes(winningSlot!) && winningPayout! >= 1) ? "YES" : "NO";
 
-        this.outputBuffer.push(
+        console.log(
             `${race.day.toString().padStart(3)} | ${(race.venue || "").padEnd(14)} | ${race.time.padEnd(5)} | ${race.raceNumber} | ${betDisplay.padEnd(7)} | ${isPending ? "?".padStart(3) : winningSlot!.toString().padStart(3)} | ${isPending ? "?".padStart(4) : winningPayout!.toString().padStart(4)} | ${score.toFixed(2).padStart(6)} | ${winStatus.padEnd(4)} | ${isPending ? "-".padStart(8) : raceProfit.toFixed(2).padStart(8)} | ${totalProfit.toFixed(2).padStart(10)} | ${status.padEnd(8)}`,
         );
-
-        // Flush buffer every 10 rows to balance memory usage and I/O
-        if (this.outputBuffer.length >= 10) {
-            console.log(this.outputBuffer.join("\n"));
-            this.outputBuffer.length = 0;
-        }
     }
 
     /**
      * Prints the final summary statistics including ROI and accuracy.
      */
     static printSummary(stats: BacktestStats) {
-        // Flush any remaining buffered output
-        if (this.outputBuffer.length > 0) {
-            console.log(this.outputBuffer.join("\n"));
-            this.outputBuffer.length = 0;
-        }
-
         const { totalProfit, totalBetCost, correctPredictions, totalPredictions } = stats;
         const roi = totalBetCost > 0 ? (totalProfit / totalBetCost) * 100 : 0;
         const accuracy = (correctPredictions / (totalPredictions || 1)) * 100;
