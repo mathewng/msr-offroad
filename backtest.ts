@@ -321,11 +321,11 @@ if (showConfigOnly) {
     const previousMonthsRaces = await loadRaces(prevFile);
     // Note: We don't need currentMonthRaces to print config, but calculateEmpiricalWinRates needs history.
     // If only one file is provided with -pco, we can use it.
-    
+
     if (previousMonthsRaces.length > 0) {
-         config.empiricalWinRates = calculateEmpiricalWinRates(previousMonthsRaces);
+        config.empiricalWinRates = calculateEmpiricalWinRates(previousMonthsRaces);
     }
-    
+
     console.log(JSON.stringify(config, null, 2));
     process.exit(0);
 }

@@ -60,6 +60,8 @@ export interface StatsResult {
     roundMap: Record<number, Record<number, SlotStat>>;
     /** The winner of the most recent race in the sequence */
     lastWinningSlot: number | null;
+    /** Momentum bonus factor calculated from historical data */
+    momentumBonus?: number;
 }
 
 /**

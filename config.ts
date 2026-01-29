@@ -1,4 +1,5 @@
 import type { BacktestConfig, Race } from "./types";
+import { EQUAL_SLOT_PROBABILITY } from "./utils";
 
 /**
  * Common configuration defaults shared across different strategies.
@@ -30,12 +31,12 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
 
     // Default baseline win rates. These are fallback values.
     empiricalWinRates: {
-        1: (1/6),
-        2: (1/6),
-        3: (1/6),
-        4: (1/6),
-        5: (1/6),
-        6: (1/6),
+        1: EQUAL_SLOT_PROBABILITY,
+        2: EQUAL_SLOT_PROBABILITY,
+        3: EQUAL_SLOT_PROBABILITY,
+        4: EQUAL_SLOT_PROBABILITY,
+        5: EQUAL_SLOT_PROBABILITY,
+        6: EQUAL_SLOT_PROBABILITY,
     },
 
     // The weight of the prior (fictitious sample size) for smoothing.
@@ -62,7 +63,7 @@ export function calculateEmpiricalWinRates(races: Race[]): Record<number, number
     for (let s = 1; s <= 6; s++) {
         const { wins, total } = counts[s]!;
         // Use a tiny amount of smoothing to avoid 0%
-        rates[s] = total > 0 ? (wins + 0.1) / (total + 0.6) : (1/6);
+        rates[s] = total > 0 ? (wins + 0.1) / (total + 0.6) : EQUAL_SLOT_PROBABILITY;
     }
     return rates;
 }

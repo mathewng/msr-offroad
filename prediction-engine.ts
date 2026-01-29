@@ -1,5 +1,5 @@
 import type { Race, StatsResult, BacktestConfig } from "./types";
-import { getPayoutBucket } from "./utils";
+import { getPayoutBucket, EQUAL_SLOT_PROBABILITY } from "./utils";
 
 /**
  * The core decision engine.
@@ -49,7 +49,7 @@ export function predictRace(currentRace: Race, stats: StatsResult, aggregatedPro
 
         // Start with the base win rate for this slot in this payout bucket
         // Fallback to the empirical prior from config for this slot if no bucket-specific data exists
-        let winRate = bStat?.winRate ?? (config.empiricalWinRates?.[slot] ?? (1/6));
+        let winRate = bStat?.winRate ?? config.empiricalWinRates?.[slot] ?? EQUAL_SLOT_PROBABILITY;
 
         // Blend in Venue context (20% weight) if we have enough samples
         if (vStat && vStat.occurrences >= 2) {
@@ -70,7 +70,17 @@ export function predictRace(currentRace: Race, stats: StatsResult, aggregatedPro
         const hmmEV = hmmProb * payout - 1;
 
         // Apply momentum bonus if this slot won the previous race
-        const momentumBonus = slot === stats.lastWinningSlot ? 1.0 : 0.0;
+        let momentumBonus = 0.0;
+        if (slot === stats.lastWinningSlot) {
+            // Use a dynamic bonus based on historical momentum data
+            // Calculate momentum bonus from historical data instead of hardcoding
+            if (stats.momentumBonus !== undefined) {
+                momentumBonus = stats.momentumBonus;
+            } else {
+                // Fallback to hardcoded value if no momentum data available
+                momentumBonus = 0.29; // Using our observed momentum factor (1.29x - 1.0) scaled to 0-1 range
+            }
+        }
 
         // Combine the historical statistical EV with the HMM sequence-based EV and momentum
         const score = histEV * config.scoreWeights.historical + hmmEV * config.scoreWeights.hmm + momentumBonus * config.scoreWeights.momentum;

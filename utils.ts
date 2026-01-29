@@ -1,5 +1,7 @@
 import type { BucketStat, Race, RaceTime, SlotStat, StatsResult, BacktestConfig } from "./types";
 
+const EQUAL_SLOT_PROBABILITY = 1 / 6;
+
 /**
  * Parses raw lines from a data file into an array of Race objects.
  *
@@ -152,7 +154,7 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
      * We use a total weight (alpha) of config.priorWeight (default 10.0).
      */
     const smooth = (wins: number, total: number, slot: number) => {
-        const prior = config.empiricalWinRates?.[slot] ?? 0.166;
+        const prior = config.empiricalWinRates?.[slot] ?? EQUAL_SLOT_PROBABILITY;
         const alpha = config.priorWeight ?? 10.0;
         return (wins + alpha * prior) / (total + alpha);
     };
@@ -177,7 +179,46 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
         }
     }
 
-    return { bucketMap, slotMap, venueMap, roundMap, lastWinningSlot: allRaces[allRaces.length - 1]?.winningSlot ?? null };
+    // Calculate momentum bonus from consecutive wins
+    let momentumBonus: number | undefined;
+
+    if (allRaces.length > 1) {
+        // Count consecutive wins for each slot
+        const consecutiveWins: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+        const totalWins: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+
+        for (let i = 1; i < allRaces.length; i++) {
+            const prevRace = allRaces[i - 1];
+            const currRace = allRaces[i];
+
+            if (prevRace.winningSlot !== null && currRace.winningSlot !== null) {
+                totalWins[prevRace.winningSlot]!++;
+                if (prevRace.winningSlot === currRace.winningSlot) {
+                    consecutiveWins[prevRace.winningSlot]!++;
+                }
+            }
+        }
+
+        // Calculate momentum bonus as the ratio of consecutive wins to total wins,
+        // but only for slots that have enough data
+        const minSamples = 10; // Minimum number of samples needed to calculate meaningful momentum
+        let validSlots = 0;
+        let totalBonus = 0;
+
+        for (let slot = 1; slot <= 6; slot++) {
+            if (totalWins[slot]! >= minSamples) {
+                const bonus = consecutiveWins[slot]! / totalWins[slot]! - slotMap[slot]!.winRate;
+                totalBonus += bonus;
+                validSlots++;
+            }
+        }
+
+        if (validSlots > 0) {
+            momentumBonus = totalBonus / validSlots;
+        }
+    }
+
+    return { bucketMap, slotMap, venueMap, roundMap, lastWinningSlot: allRaces[allRaces.length - 1]?.winningSlot ?? null, momentumBonus };
 }
 
 /**
@@ -188,7 +229,7 @@ export function initializeStats(config: BacktestConfig): StatsResult {
     const slotMap: Record<number, SlotStat> = {};
 
     for (let s = 1; s <= 6; s++) {
-        const prior = config.empiricalWinRates?.[s] ?? (1/6);
+        const prior = config.empiricalWinRates?.[s] ?? EQUAL_SLOT_PROBABILITY;
         bucketMap[s] = {
             0: { occurrences: 0, wins: 0, winRate: prior },
             1: { occurrences: 0, wins: 0, winRate: prior },
@@ -220,20 +261,20 @@ export function updateStats(stats: StatsResult, r: Race, config: BacktestConfig)
     if (r.venue && !stats.venueMap[r.venue]) {
         stats.venueMap[r.venue] = {};
         for (let s = 1; s <= 6; s++) {
-            const prior = config.empiricalWinRates?.[s] ?? (1/6);
+            const prior = config.empiricalWinRates?.[s] ?? EQUAL_SLOT_PROBABILITY;
             stats.venueMap[r.venue]![s] = { occurrences: 0, wins: 0, winRate: prior };
         }
     }
     if (!stats.roundMap[r.raceNumber]) {
         stats.roundMap[r.raceNumber] = {};
         for (let s = 1; s <= 6; s++) {
-            const prior = config.empiricalWinRates?.[s] ?? (1/6);
+            const prior = config.empiricalWinRates?.[s] ?? EQUAL_SLOT_PROBABILITY;
             stats.roundMap[r.raceNumber]![s] = { occurrences: 0, wins: 0, winRate: prior };
         }
     }
 
     const smooth = (wins: number, total: number, slot: number) => {
-        const prior = config.empiricalWinRates?.[slot] ?? 0.166;
+        const prior = config.empiricalWinRates?.[slot] ?? EQUAL_SLOT_PROBABILITY;
         const alpha = config.priorWeight ?? 10.0;
         return (wins + alpha * prior) / (total + alpha);
     };
@@ -273,7 +314,6 @@ export function updateStats(stats: StatsResult, r: Race, config: BacktestConfig)
     return stats;
 }
 
-
 export function formatCurrency(value: number): string {
     return value.toFixed(2);
 }
@@ -281,3 +321,5 @@ export function formatCurrency(value: number): string {
 export function formatPercent(value: number): string {
     return (value * 100).toFixed(2) + "%";
 }
+
+export { EQUAL_SLOT_PROBABILITY };

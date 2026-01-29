@@ -1,4 +1,4 @@
-import { parseLines } from "./utils";
+import { parseLines, EQUAL_SLOT_PROBABILITY } from "./utils";
 
 async function analyze() {
     const historicalData = await Bun.file("data_historical.txt").text();
@@ -24,7 +24,7 @@ async function analyze() {
         }
     }
 
-    const baselineRepeatProb = (1 / 6) * 100;
+    const baselineRepeatProb = EQUAL_SLOT_PROBABILITY * 100;
     const actualRepeatProb = (repeatWins / repeatAttempts) * 100;
     console.log(`Baseline (Random): ${baselineRepeatProb.toFixed(2)}%`);
     console.log(`Actual Repeat:     ${actualRepeatProb.toFixed(2)}% (${repeatWins}/${repeatAttempts})`);
