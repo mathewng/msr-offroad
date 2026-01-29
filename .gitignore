@@ -39,3 +39,9 @@ build/
 # Bun
 .bun/
 bun.lockb
+
+# data files
+data_*.txt
+
+# backup files
+backup*.7z
