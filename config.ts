@@ -7,7 +7,7 @@ import { EQUAL_SLOT_PROBABILITY } from "./utils";
  */
 const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreThreshold" | "relativeThreshold"> = {
     // Number of HMM models to train in the ensemble. Higher = more stable predictions.
-    ensembleSize: 120,
+    ensembleSize: 100,
 
     // Maximum iterations for the Baum-Welch training algorithm.
     trainingIterations: 600,
@@ -90,13 +90,13 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
         // hmm: 0.796,
         // momentum: 0.052, // 5.2% on streaks
 
-        // historical: 0.16,
-        // hmm: 0.84,
+        // historical: 0.6,
+        // hmm: 0.4,
         // momentum: 0.0,
     },
 
-    minScoreThreshold: 0.1, //config 1
-    relativeThreshold: 0.22, //config 1
+    // minScoreThreshold: 0.1, //config 1
+    // relativeThreshold: 0.22, //config 1
 
     // minScoreThreshold: 0, //config 2
     // relativeThreshold: 0.2, //config 2
@@ -104,8 +104,8 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
     // minScoreThreshold: 0, //config 3
     // relativeThreshold: 0, //config 3
 
-    // minScoreThreshold: 0.05,
-    // relativeThreshold: 0.1,
+    minScoreThreshold: 0.0,
+    relativeThreshold: 0.22,
 };
 
 /**
