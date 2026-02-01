@@ -50,7 +50,7 @@ class ResultPrinter {
      * Prints the table header for the race-by-race output.
      */
     static printHeader() {
-        console.log([this.SEPARATOR, this.HEADER, this.SEPARATOR].join('\n'));
+        console.log([this.SEPARATOR, this.HEADER, this.SEPARATOR].join("\n"));
     }
 
     /**
@@ -90,6 +90,9 @@ class ResultPrinter {
  * 3. Before each chunk, train an ensemble of Hidden Markov Models (HMM) on all known history.
  * 4. Predict each race in the chunk using a combination of historical stats and HMM probabilities.
  * 5. Update the history and statistics with the actual outcomes after each race.
+ *
+ * This approach simulates real-world deployment where models are periodically retrained
+ * as new data becomes available, maintaining an accurate picture of the system's behavior.
  *
  * @param prevFile - Path to the historical data file.
  * @param currFile - Path to the target data file for testing.

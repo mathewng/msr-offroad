@@ -14,6 +14,8 @@ export interface Bet {
 
 /**
  * Represents all data for a single race instance.
+ * This structure holds all the information needed to analyze and make betting decisions,
+ * including historical results, payouts, venue details, and current bets.
  */
 export interface Race {
     day: number; // Relative day number from the start of the dataset

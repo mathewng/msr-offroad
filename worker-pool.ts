@@ -5,6 +5,11 @@
  * queued and dispatched to idle workers as they become available. This
  * approach minimizes the overhead of creating and destroying threads during
  * high-frequency operations like HMM ensemble training.
+ *
+ * Performance Benefits:
+ * - Reduces thread creation/destruction overhead
+ * - Enables efficient parallelization of CPU-intensive tasks
+ * - Manages resource usage effectively through persistent worker lifecycle
  */
 export class WorkerPool {
     private workers: Worker[] = [];

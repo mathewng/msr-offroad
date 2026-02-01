@@ -6,6 +6,11 @@ import { HMM } from "./hmm";
  * This file is executed within a background web worker thread. It is responsible
  * for the computationally expensive task of training a Hidden Markov Model (HMM)
  * on a sequence and generating future probabilities.
+ *
+ * Benefits:
+ * - Offloads CPU-intensive operations from main thread to background workers
+ * - Enables parallel processing of multiple HMM models simultaneously
+ * - Processes large datasets efficiently without blocking UI updates
  */
 
 declare var self: Worker;

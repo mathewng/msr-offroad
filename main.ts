@@ -129,6 +129,18 @@ async function main() {
     console.log();
 }
 
+/**
+ * Parse lines from input data into race objects with betting information.
+ *
+ * This function processes tab-separated values and extracts:
+ * - Venue, time, round numbers
+ * - Win indicators (binary values) for each slot
+ * - Payout multipliers for each slot
+ * - Calculates winning slot based on win indicators
+ *
+ * @param lines - Array of text lines from the input file
+ * @returns Promise resolving to array of Race objects with parsed data
+ */
 async function parseLines(lines: string[]): Promise<Race[]> {
     let day = 1;
     let time: RaceTime = "12pm";
@@ -205,6 +217,11 @@ function clearBets(races: Race[]) {
  * Bet slot 2 and 5 for 12pm and 6pm
  * @param races
  */
+/**
+ * Bet slot 2 and 5 for 12pm and 6pm
+ * Strategy A: Conservative approach focusing on two slots that historically perform well
+ * @param races
+ */
 async function generateBetsStrategyA(races: Race[]) {
     races.forEach((r, i, a) => {
         if (r.time === "12pm") {
@@ -235,6 +252,11 @@ async function generateBetsStrategyA(races: Race[]) {
  * Bet slot 2 and 4 for 12pm and 6pm
  * @param races
  */
+/**
+ * Bet slot 2 and 4 for 12pm and 6pm
+ * Strategy B: Alternative conservative approach with different slots
+ * @param races
+ */
 async function generateBetsStrategyB(races: Race[]) {
     races.forEach((r, i, a) => {
         if (r.time === "12pm") {
@@ -263,6 +285,11 @@ async function generateBetsStrategyB(races: Race[]) {
 
 /**
  * Bet slot 2, 4 and 5 for 12pm and 6pm
+ * @param races
+ */
+/**
+ * Bet slot 2, 4 and 5 for 12pm and 6pm
+ * Strategy C: Balanced approach with three slots
  * @param races
  */
 async function generateBetsStrategyC(races: Race[]) {
@@ -303,6 +330,11 @@ async function generateBetsStrategyC(races: Race[]) {
  * Bet slot 2 for 12pm and 6pm
  * @param races
  */
+/**
+ * Bet slot 2 for 12pm and 6pm
+ * Strategy D: Simple approach focusing on a single slot
+ * @param races
+ */
 async function generateBetsStrategyD(races: Race[]) {
     races.forEach((r, i, a) => {
         if (r.time === "12pm") {
@@ -323,6 +355,11 @@ async function generateBetsStrategyD(races: Race[]) {
 
 /**
  * Bet slot 4,5,6 for 12pm and 6pm
+ * @param races
+ */
+/**
+ * Bet slot 4,5,6 for 12pm and 6pm
+ * Strategy E: Focus on bottom slots
  * @param races
  */
 async function generateBetsStrategyE(races: Race[]) {
@@ -363,6 +400,12 @@ async function generateBetsStrategyE(races: Race[]) {
  * Up to 4 bets per race
  * @param races
  */
+/**
+ * Bet profitable from recommendations
+ * Up to 4 bets per race
+ * Strategy Y: Uses historical performance recommendations to place bets
+ * @param races
+ */
 async function generateBetsStrategyY(races: Race[], recommendations: { slot: number; payout: number }[]) {
     races.forEach((r, i, a) => {
         recommendations.forEach((rec) => {
@@ -377,6 +420,11 @@ async function generateBetsStrategyY(races: Race[], recommendations: { slot: num
 
 /**
  * Bet profitable from recommendations
+ * @param races
+ */
+/**
+ * Bet profitable from recommendations
+ * Strategy Z: Simple approach betting on recommended slots
  * @param races
  */
 async function generateBetsStrategyZ(races: Race[], recommendations: { slot: number }[]) {
@@ -420,6 +468,14 @@ async function calculateProfit(races: Race[]): Promise<ProfitResults> {
     return results;
 }
 
+/**
+ * Calculate payout statistics for each slot and payout combination.
+ * This provides insights into which combinations of slots and payouts
+ * have been most profitable in the past, helping to identify good betting opportunities.
+ *
+ * @param races - Array of race data to analyze
+ * @returns Promise resolving to sorted array of payout statistics with metrics like profit and win rate
+ */
 async function calculateSlotPayoutStats(races: Race[]) {
     const occurrencesBySlotAndPayout: Record<number, Record<number, number>> = {};
 
@@ -504,6 +560,14 @@ async function calculateSlotPayoutStats(races: Race[]) {
  * Calculate slot stats
  * @param races
  */
+/**
+ * Calculate slot statistics including win rates, profit and expected values.
+ * This provides a comprehensive view of each slot's historical performance
+ * across all races to inform betting decisions.
+ *
+ * @param races - Array of race data to analyze
+ * @returns Promise resolving to sorted array of slot statistics with metrics like profit and win rate
+ */
 async function calculateSlotStats(races: Race[]) {
     const winsBySlot: {
         [slot: number]: {
@@ -566,6 +630,11 @@ async function calculateSlotStats(races: Race[]) {
     return sortedWinsBySlot.map((x) => ({ ...x, profit: x.profit + "x", winRate: (x.winRate.toFixed(2) + " %").padStart(7, " "), payout: x.payout + "x", expectedValue: x.expectedValue.toFixed(2) }));
 }
 
+/**
+ * Main entry point for running betting strategies on race data.
+ * Processes input files and executes multiple betting strategy comparisons to
+ * evaluate performance and identify optimal approaches for different conditions.
+ */
 (async function () {
     await main();
 })();

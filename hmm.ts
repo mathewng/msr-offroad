@@ -13,6 +13,11 @@ import RandomPool from "./random-pool";
  * Domain Mapping:
  * - Hidden States (Latent variables): Abstract patterns or "modes" of the race system.
  * - Observations (Emissions): The composite outcome (Slot Index * 3 + Payout Bucket).
+ *
+ * Performance Optimizations:
+ * - Uses object pooling for memory management to reduce GC pressure
+ * - Transposed transition matrix (At) improves cache locality in forward/backward algorithms
+ * - Scaling/normalization prevents numerical underflow during probability calculations
  */
 
 const rng = new RandomPool();

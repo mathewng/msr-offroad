@@ -79,6 +79,12 @@ export async function parseLines(lines: string[]): Promise<Race[]> {
  * This ensures that Bucket 0 always represents a "strong" (low payout) version of that lane,
  * and Bucket 2 represents a "weak" (high payout) version, regardless of overlapping global ranges.
  */
+/**
+ * Categorizes a payout into a "bucket" relative to that specific slot's typical range.
+ *
+ * This ensures that Bucket 0 always represents a "strong" (low payout) version of that lane,
+ * and Bucket 2 represents a "weak" (high payout) version, regardless of overlapping global ranges.
+ */
 export function getPayoutBucket(payout: number, slot: number): number {
     const [low, high] = [5.5, 9.6];
 
