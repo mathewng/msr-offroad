@@ -11,7 +11,7 @@ const EQUAL_SLOT_PROBABILITY = 1 / 6;
  * - W1-W6 are binary win indicators (1 for winner, 0 otherwise).
  * - P1-P6 are the payout multipliers for each slot.
  */
-export async function parseLines(lines: string[]): Promise<Race[]> {
+export  function parseLines(lines: string[]): Race[] {
     let currentDay = 1;
     let lastVenue = "";
     let lastTime: RaceTime = "12:00";
