@@ -81,6 +81,25 @@ async function main() {
         const profit = await calculateProfit(races);
         console.log("profit", profit);
     }
+    {
+        console.log(`
+ * Bet round 1 for 2nd and 3rd round`);
+        clearBets(races);
+        await generateBetsStrategyF(races);
+
+        const profit = await calculateProfit(races);
+        console.log("profit", profit);
+    }
+    {
+        console.log(`
+ * Bet round 1 for 2nd and 3rd round
+ * Bet round 2 for 3rd round`);
+        clearBets(races);
+        await generateBetsStrategyG(races);
+
+        const profit = await calculateProfit(races);
+        console.log("profit", profit);
+    }
 
     console.log();
     {
@@ -393,6 +412,48 @@ async function generateBetsStrategyE(races: Race[]) {
                 cost: 200,
             });
         }
+    });
+}
+/**
+ * Bet round 1 for 2nd and 3rd round
+ * @param races
+ */
+async function generateBetsStrategyF(races: Race[]) {
+    races.forEach((r, i, a) => {
+        const firstRound = a[i - r.raceNumber + 1]!;
+        if (r.raceNumber === 2 || r.raceNumber === 3) {
+            r.bets.push({
+                slot: firstRound.winningSlot,
+                cost: 200,
+            })
+        }
+    });
+}
+/**
+ * Bet round 1 for 2nd and 3rd round
+ * Bet round 2 for 3rd round
+ * @param races
+ */
+async function generateBetsStrategyG(races: Race[]) {
+    races.forEach((r, i, a) => {
+        const firstRound = a[i - r.raceNumber + 1]!;
+        const secondRound = a[i - r.raceNumber + 2]!;
+        if (r.raceNumber === 2) {
+            r.bets.push({
+                slot: firstRound.winningSlot,
+                cost: 200,
+            })
+        } else if (r.raceNumber === 3) {
+            r.bets.push({
+                slot: firstRound.winningSlot,
+                cost: 200,
+            })
+            r.bets.push({
+                slot: secondRound.winningSlot,
+                cost: 200,
+            })
+        }
+
     });
 }
 /**
