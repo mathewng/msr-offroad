@@ -7,13 +7,13 @@ import { EQUAL_SLOT_PROBABILITY } from "./utils";
  */
 const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreThreshold" | "relativeThreshold"> = {
     // Number of HMM models to train in the ensemble. Higher = more stable predictions.
-    ensembleSize: 100,
+    ensembleSize: 120,
 
     // Maximum iterations for the Baum-Welch training algorithm.
     trainingIterations: 600,
 
     // Convergence cutoff for training. Smaller values yield more precise fits but take longer.
-    convergenceTolerance: 5e-3,
+    convergenceTolerance: 1e-3,
 
     // Number of CPU cores to use for parallel training.
     maxWorkers: 4,
