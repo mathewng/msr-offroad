@@ -100,7 +100,7 @@ export class HMM {
         if (sum > 0) {
             const invSum = 1.0 / sum;
             for (let i = 0; i < arr.length; i++) {
-                arr[i] *= invSum;
+                arr[i]! *= invSum;
             }
         }
     }
@@ -225,9 +225,9 @@ export class HMM {
                     // Zero out and accumulate emissions across the whole sequence
                     for (let k = 0; k < M; k++) this.B[jOff + k] = 0;
                     for (let t = 0; t < T; t++) {
-                        this.B[jOff + obs[t]!] += gamma[t * N + j]!;
+                        this.B[jOff + obs[t]!]! += gamma[t * N + j]!;
                     }
-                    for (let k = 0; k < M; k++) this.B[jOff + k] *= invDenom;
+                    for (let k = 0; k < M; k++) this.B[jOff + k]! *= invDenom;
                 }
 
                 // Sync the transposed copy
@@ -265,7 +265,7 @@ export class HMM {
         if (rowSum0 <= 0) return -Infinity;
 
         const invRowSum0 = 1.0 / rowSum0;
-        for (let i = 0; i < N; i++) alpha[i] *= invRowSum0;
+        for (let i = 0; i < N; i++) alpha[i]! *= invRowSum0;
         logLikelihood += Math.log(rowSum0);
 
         for (let t = 1; t < T; t++) {
@@ -289,7 +289,7 @@ export class HMM {
             if (rowSum <= 0) return -Infinity;
 
             const invRowSum = 1.0 / rowSum;
-            for (let i = 0; i < N; i++) alpha[tOff + i] *= invRowSum;
+            for (let i = 0; i < N; i++) alpha[tOff + i]! *= invRowSum;
             logLikelihood += Math.log(rowSum);
         }
         return logLikelihood;
@@ -326,7 +326,7 @@ export class HMM {
             // Normalization to maintain numerical stability
             if (rowSum === 0) rowSum = 1e-20;
             const invRowSum = 1.0 / rowSum;
-            for (let i = 0; i < N; i++) beta[tOff + i] *= invRowSum;
+            for (let i = 0; i < N; i++) beta[tOff + i]! *= invRowSum;
         }
     }
 
@@ -371,7 +371,7 @@ export class HMM {
                         for (let i = 0; i < N; i++) stateDistribution[i] = val;
                     } else {
                         const invSum = 1.0 / sum;
-                        for (let i = 0; i < N; i++) stateDistribution[i] *= invSum;
+                        for (let i = 0; i < N; i++) stateDistribution[i]! *= invSum;
                     }
                 } finally {
                     BufferPool.release(alpha);

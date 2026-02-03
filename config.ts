@@ -84,7 +84,8 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
         // Higher weight on historical patterns for better stability in high-volume betting.
         historical: 0.14224,
         hmm: 0.74676,
-        momentum: 0.111, // 11.1% weight on streaks
+        momentum: 0.061, // reduced from 0.111
+        zigZag: 0.05,
 
         // historical: 0.152,
         // hmm: 0.796,
@@ -124,7 +125,8 @@ export const CONFIG_EFFICIENCY: BacktestConfig = {
         // Equal split between history and HMM provides the highest ROI for selective bets.
         historical: 0.152,
         hmm: 0.796,
-        momentum: 0.052, // 5.2% on streaks
+        momentum: 0.022, // reduced from 0.052
+        zigZag: 0.03,
 
         // historical: 0.16,
         // hmm: 0.84,

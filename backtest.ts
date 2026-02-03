@@ -243,8 +243,9 @@ function parseArgs() {
     const historicalWeightMatch = args.find((a) => a.startsWith("--historical-weight="));
     const hmmWeightMatch = args.find((a) => a.startsWith("--hmm-weight="));
     const momentumWeightMatch = args.find((a) => a.startsWith("--momentum-weight="));
+    const zigZagWeightMatch = args.find((a) => a.startsWith("--zigzag-weight="));
 
-    if (historicalWeightMatch || hmmWeightMatch || momentumWeightMatch) {
+    if (historicalWeightMatch || hmmWeightMatch || momentumWeightMatch || zigZagWeightMatch) {
         config = { ...config };
         if (historicalWeightMatch && historicalWeightMatch.includes("=") && historicalWeightMatch.split("=")[1]!.trim() !== "") {
             const weight = parseFloat(historicalWeightMatch.split("=")[1]!);
@@ -262,6 +263,12 @@ function parseArgs() {
             const weight = parseFloat(momentumWeightMatch.split("=")[1]!);
             if (!isNaN(weight)) {
                 config.scoreWeights = { ...config.scoreWeights, momentum: weight };
+            }
+        }
+        if (zigZagWeightMatch && zigZagWeightMatch.includes("=") && zigZagWeightMatch.split("=")[1]!.trim() !== "") {
+            const weight = parseFloat(zigZagWeightMatch.split("=")[1]!);
+            if (!isNaN(weight)) {
+                config.scoreWeights = { ...config.scoreWeights, zigZag: weight };
             }
         }
     }

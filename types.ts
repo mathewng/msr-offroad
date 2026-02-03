@@ -82,6 +82,7 @@ export interface BacktestConfig {
         historical: number; // Weight for historical statistical EV (0.0 to 1.0)
         hmm: number; // Weight for HMM sequence-based EV (0.0 to 1.0)
         momentum: number; // Weight for the streak/momentum bonus (0.0 to 1.0)
+        zigZag: number; // Weight for the zig-zag/neighbor bonus (0.0 to 1.0)
     };
     minScoreThreshold: number; // Hard floor for the final EV score before a bet is considered
     relativeThreshold?: number; // Optional edge required over the race average score

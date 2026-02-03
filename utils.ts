@@ -11,7 +11,7 @@ const EQUAL_SLOT_PROBABILITY = 1 / 6;
  * - W1-W6 are binary win indicators (1 for winner, 0 otherwise).
  * - P1-P6 are the payout multipliers for each slot.
  */
-export  function parseLines(lines: string[]): Race[] {
+export function parseLines(lines: string[]): Race[] {
     let currentDay = 1;
     let lastVenue = "";
     let lastTime: RaceTime = "12:00";
@@ -188,8 +188,8 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
         const totalWins: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
 
         for (let i = 1; i < allRaces.length; i++) {
-            const prevRace = allRaces[i - 1];
-            const currRace = allRaces[i];
+            const prevRace = allRaces[i - 1]!;
+            const currRace = allRaces[i]!;
 
             if (prevRace.winningSlot !== null && currRace.winningSlot !== null) {
                 totalWins[prevRace.winningSlot]!++;
