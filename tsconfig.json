@@ -8,11 +8,16 @@
         "jsx": "react-jsx",
         "allowJs": true,
 
-        // Bundler mode
+        // Bun specific settings
         "moduleResolution": "bundler",
         "allowImportingTsExtensions": true,
         "verbatimModuleSyntax": true,
         "noEmit": true,
+
+        // Bun runtime support
+        "moduleDetection": "force",
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
 
         // Best practices
         "strict": true,
@@ -20,6 +25,10 @@
         "noFallthroughCasesInSwitch": true,
         "noUncheckedIndexedAccess": true,
         "noImplicitOverride": true,
+
+        // Additional Bun optimizations
+        "resolveJsonModule": true,
+        "isolatedModules": true,
 
         // Some stricter flags (disabled by default)
         "noUnusedLocals": false,
