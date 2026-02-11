@@ -1,6 +1,6 @@
 import type { BucketStat, Race, RaceTime, SlotStat, StatsResult, BacktestConfig } from "./types";
 
-const EQUAL_SLOT_PROBABILITY = 1 / 6;
+export const EQUAL_SLOT_PROBABILITY = 1 / 6;
 
 /**
  * Parses raw lines from a data file into an array of Race objects.
@@ -322,4 +322,26 @@ export function formatPercent(value: number): string {
     return (value * 100).toFixed(2) + "%";
 }
 
-export { EQUAL_SLOT_PROBABILITY };
+/**
+ * Derives historical win rates from a dataset to populate the config.
+ */
+export function calculateEmpiricalWinRates(races: Race[]): Record<number, number> {
+    const counts: Record<number, { wins: number; total: number; }> = {};
+    for (let s = 1; s <= 6; s++) counts[s] = { wins: 0, total: 0 };
+
+    for (const r of races) {
+        if (r.winningSlot === null) continue;
+        for (let s = 1; s <= 6; s++) {
+            counts[s]!.total++;
+            if (s === r.winningSlot) counts[s]!.wins++;
+        }
+    }
+
+    const rates: Record<number, number> = {};
+    for (let s = 1; s <= 6; s++) {
+        const { wins, total } = counts[s]!;
+        // Use a tiny amount of smoothing to avoid 0%
+        rates[s] = total > 0 ? (wins + 0.1) / (total + 0.6) : EQUAL_SLOT_PROBABILITY;
+    }
+    return rates;
+}

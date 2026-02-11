@@ -1,4 +1,5 @@
-import { CONFIG_EFFICIENCY, CONFIG_HIGHEST_YIELD, calculateEmpiricalWinRates } from "./config";
+import { CONFIG_EFFICIENCY, CONFIG_HIGHEST_YIELD } from "./config";
+import { calculateEmpiricalWinRates } from "./utils";
 import { predictRace } from "./prediction-engine";
 import type { BacktestConfig, Race } from "./types";
 import { calculateStats, formatCurrency, getPayoutBucket, parseLines, updateStats } from "./utils";

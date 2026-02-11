@@ -20,15 +20,16 @@ export class RandomPool {
 
     /**
      * Creates a new RandomPool with the specified size
-     * @param size Number of random values to pre-generate (default: 10 million)
+     * @param size Number of random values to pre-generate (default: 384K, enough for 40 days)
      */
     constructor(size: number = 500_000) {
         // Align to cache line boundaries (64 bytes = 8 Float64 values)
         // This ensures optimal memory access patterns and reduces cache misses
         const alignedSize = Math.ceil(size / 8) * 8;
         this.pool = new Float64Array(alignedSize);
-        // Use smaller batches for better cache locality (1/8 of pool or max 1024)
-        this.batchSize = Math.min(1024, alignedSize >> 3);
+        // Use smaller batches for better cache locality (1/8 of pool or max 32768)
+        // Zen 4 has 1MB L2 per core
+        this.batchSize = Math.min(32768, alignedSize >> 3);
         this.refill();
     }
 

@@ -1,4 +1,4 @@
-import type { BacktestConfig, Race } from "./types";
+import type { BacktestConfig } from "./types";
 import { EQUAL_SLOT_PROBABILITY } from "./utils";
 
 /**
@@ -10,7 +10,7 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     ensembleSize: 120,
 
     // Maximum iterations for the Baum-Welch training algorithm.
-    trainingIterations: 600,
+    trainingIterations: 10_000,
 
     // Convergence cutoff for training. Smaller values yield more precise fits but take longer.
     convergenceTolerance: 1e-3,
@@ -19,7 +19,7 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     maxWorkers: 4,
 
     // Number of hidden states in the HMM. 8 states has been tested to be optimal.
-    hmmStates: 8,
+    hmmStates: 6,
 
     // Observation space size: 6 slots * 3 payout buckets (Favored, Neutral, Longshot) = 18.
     hmmObservations: 18,
@@ -41,72 +41,54 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
 
     // The weight of the prior (fictitious sample size) for smoothing.
     // Higher values make the model stickier to historical averages.
-    priorWeight: 10.0,
+    priorWeight: 1,
 };
-
-/**
- * Derives historical win rates from a dataset to populate the config.
- */
-export function calculateEmpiricalWinRates(races: Race[]): Record<number, number> {
-    const counts: Record<number, { wins: number; total: number }> = {};
-    for (let s = 1; s <= 6; s++) counts[s] = { wins: 0, total: 0 };
-
-    for (const r of races) {
-        if (r.winningSlot === null) continue;
-        for (let s = 1; s <= 6; s++) {
-            counts[s]!.total++;
-            if (s === r.winningSlot) counts[s]!.wins++;
-        }
-    }
-
-    const rates: Record<number, number> = {};
-    for (let s = 1; s <= 6; s++) {
-        const { wins, total } = counts[s]!;
-        // Use a tiny amount of smoothing to avoid 0%
-        rates[s] = total > 0 ? (wins + 0.1) / (total + 0.6) : EQUAL_SLOT_PROBABILITY;
-    }
-    return rates;
-}
 
 /**
  * Strategy: HIGHEST YIELD
  * Goal: Maximize total net profit.
  *
- * This strategy is more aggressive, placing up to 2 bets per race and using a
- * lower confidence threshold to capture more positive-EV opportunities.
+ * This strategy is more aggressive, placing up to 3 bets per race
  */
 export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
     ...BASE_CONFIG,
-    // Allow betting on up to 2 slots per race.
+
+    chunkSize: 6,
+
     betLimit: 3,
 
     scoreWeights: {
-        // Higher weight on historical patterns for better stability in high-volume betting.
-        historical: 0.14224,
-        hmm: 0.74676,
-        momentum: 0.061, // reduced from 0.111
-        zigZag: 0.05,
-
-        // historical: 0.152,
-        // hmm: 0.796,
-        // momentum: 0.052, // 5.2% on streaks
-
-        // historical: 0.6,
-        // hmm: 0.4,
-        // momentum: 0.0,
+        historical: 0.825,
+        hmm: 0.175,
+        momentum: 0,
+        zigZag: 0,
     },
 
-    // minScoreThreshold: 0.1, //config 1
-    // relativeThreshold: 0.22, //config 1
+    minScoreThreshold: 0,
+    relativeThreshold: 0,
+};
 
-    // minScoreThreshold: 0, //config 2
-    // relativeThreshold: 0.2, //config 2
+/**
+ * Strategy: CONFIG_BET2
+ * Goal: Variation of CONFIG_HIGHEST_YIELD but with maximum 2 bets per race
+ */
+export const CONFIG_BET2: BacktestConfig = {
+    ...BASE_CONFIG,
 
-    // minScoreThreshold: 0, //config 3
-    // relativeThreshold: 0, //config 3
+    betLimit: 2,
 
-    minScoreThreshold: 0.0,
-    relativeThreshold: 0.22,
+    scoreWeights: {
+        // baseline performance to beat
+        // historical: 1,
+        // hmm: 0,
+        historical: 0.825,
+        hmm: 0.175,
+        momentum: 0,
+        zigZag: 0,
+    },
+
+    minScoreThreshold: 0,
+    relativeThreshold: 0,
 };
 
 /**
@@ -118,32 +100,24 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
  */
 export const CONFIG_EFFICIENCY: BacktestConfig = {
     ...BASE_CONFIG,
-    // Only ever bet on the top-rated candidate.
+
+    chunkSize: 3,
+
+    hmmStates: 6,
     betLimit: 1,
 
     scoreWeights: {
-        // Equal split between history and HMM provides the highest ROI for selective bets.
-        historical: 0.152,
-        hmm: 0.796,
-        momentum: 0.022, // reduced from 0.052
-        zigZag: 0.03,
-
-        // historical: 0.16,
-        // hmm: 0.84,
-        // momentum: 0.0,
+        // baseline to beat
+        // historical: 1,
+        // hmm: 0,
+        historical: 0.84,
+        hmm: 0.16,
+        momentum: 0,
+        zigZag: 0,
     },
 
-    minScoreThreshold: 0, // config 1
-    relativeThreshold: 0.2, // config 1
-
-    // minScoreThreshold: 0, // config 2
-    // relativeThreshold: 0, // config 2
-
-    // minScoreThreshold: 0.1, // config 3
-    // relativeThreshold: 0.22, // config 3
-
-    // minScoreThreshold: 0.05,
-    // relativeThreshold: 0.1,
+    minScoreThreshold: 0,
+    relativeThreshold: 0,
 };
 
 /**
