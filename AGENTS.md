@@ -2,6 +2,10 @@
 
 ## Toolchain
 
+## Directory Layout
+
+- No src directory present; all source files are in root.
+
 - **Build**: `bun run backtest.ts`
 - **Lint & Format**: `bun run format` and `bun run lint`
 - **Test**: No test framework configured yet
@@ -72,3 +76,8 @@
 
 - `data_historical.txt`
 - `data_current.txt`
+
+## Bun-Specific Notes
+
+- Use `bun` instead of `node` to run scripts and manage dependencies
+- You may want to add Bun-specific commands for running tests if you integrate a test framework later

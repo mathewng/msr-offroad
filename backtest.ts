@@ -303,6 +303,15 @@ function parseArgs() {
         }
     }
 
+    // Parse chunk size override
+    const chunkSizeMatch = args.find((a) => a.startsWith("--chunk-size="));
+    if (chunkSizeMatch && chunkSizeMatch.includes("=") && chunkSizeMatch.split("=")[1]!.trim() !== "") {
+        const chunkSize = parseInt(chunkSizeMatch.split("=")[1]!, 10);
+        if (!isNaN(chunkSize) && chunkSize > 0) {
+            config = { ...config, chunkSize: chunkSize };
+        }
+    }
+
     return {
         prevFile: fileArgs[0],
         currFile: fileArgs[1],
@@ -329,7 +338,7 @@ if (showConfigOnly) {
 
 if (!prevFile || !currFile) {
     console.error(
-        "Usage: bun backtest.ts <previous_month_data> <current_month_data> [--efficiency|--yield|--bet2] [--historical-weight=<value>] [--hmm-weight=<value>] [--momentum-weight=<value>] [--min-score=<value>] [--relative-threshold=<value>] [--prior-weight=<value>]",
+        "Usage: bun backtest.ts <previous_month_data> <current_month_data> [--efficiency|--yield|--bet2] [--historical-weight=<value>] [--hmm-weight=<value>] [--momentum-weight=<value>] [--min-score=<value>] [--relative-threshold=<value>] [--prior-weight=<value>] [--chunk-size=<value>]",
     );
     process.exit(1);
 }
