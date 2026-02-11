@@ -96,10 +96,7 @@ export function predictRace(currentRace: Race, stats: StatsResult, aggregatedPro
         }
 
         // Combine the historical statistical EV with the HMM sequence-based EV and momentum
-        const score = histEV * config.scoreWeights.historical + 
-                     hmmEV * config.scoreWeights.hmm + 
-                     momentumBonus * config.scoreWeights.momentum +
-                     zigZagBonus * config.scoreWeights.zigZag;
+        const score = histEV * config.scoreWeights.historical + hmmEV * config.scoreWeights.hmm + momentumBonus * config.scoreWeights.momentum + zigZagBonus * config.scoreWeights.zigZag;
 
         candidates.push({ slot, score });
     }

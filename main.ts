@@ -425,7 +425,7 @@ async function generateBetsStrategyF(races: Race[]) {
             r.bets.push({
                 slot: firstRound.winningSlot,
                 cost: 200,
-            })
+            });
         }
     });
 }
@@ -442,18 +442,17 @@ async function generateBetsStrategyG(races: Race[]) {
             r.bets.push({
                 slot: firstRound.winningSlot,
                 cost: 200,
-            })
+            });
         } else if (r.raceNumber === 3) {
             r.bets.push({
                 slot: firstRound.winningSlot,
                 cost: 200,
-            })
+            });
             r.bets.push({
                 slot: secondRound.winningSlot,
                 cost: 200,
-            })
+            });
         }
-
     });
 }
 /**

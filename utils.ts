@@ -326,7 +326,7 @@ export function formatPercent(value: number): string {
  * Derives historical win rates from a dataset to populate the config.
  */
 export function calculateEmpiricalWinRates(races: Race[]): Record<number, number> {
-    const counts: Record<number, { wins: number; total: number; }> = {};
+    const counts: Record<number, { wins: number; total: number }> = {};
     for (let s = 1; s <= 6; s++) counts[s] = { wins: 0, total: 0 };
 
     for (const r of races) {

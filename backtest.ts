@@ -1,4 +1,4 @@
-import { CONFIG_EFFICIENCY, CONFIG_HIGHEST_YIELD } from "./config";
+import { CONFIG_BET2, CONFIG_EFFICIENCY, CONFIG_HIGHEST_YIELD } from "./config";
 import { calculateEmpiricalWinRates } from "./utils";
 import { predictRace } from "./prediction-engine";
 import type { BacktestConfig, Race } from "./types";
@@ -238,6 +238,8 @@ function parseArgs() {
         config = CONFIG_EFFICIENCY;
     } else if (flags.includes("--yield") || flags.includes("-y")) {
         config = CONFIG_HIGHEST_YIELD;
+    } else if (flags.includes("--bet2") || flags.includes("-b2")) {
+        config = CONFIG_BET2;
     }
 
     // Parse score weights override
@@ -327,7 +329,7 @@ if (showConfigOnly) {
 
 if (!prevFile || !currFile) {
     console.error(
-        "Usage: bun backtest.ts <previous_month_data> <current_month_data> [--efficiency|--yield] [--historical-weight=<value>] [--hmm-weight=<value>] [--momentum-weight=<value>] [--min-score=<value>] [--relative-threshold=<value>] [--prior-weight=<value>]",
+        "Usage: bun backtest.ts <previous_month_data> <current_month_data> [--efficiency|--yield|--bet2] [--historical-weight=<value>] [--hmm-weight=<value>] [--momentum-weight=<value>] [--min-score=<value>] [--relative-threshold=<value>] [--prior-weight=<value>]",
     );
     process.exit(1);
 }
