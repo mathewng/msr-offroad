@@ -101,8 +101,6 @@ export const CONFIG_BET2: BacktestConfig = {
 export const CONFIG_EFFICIENCY: BacktestConfig = {
     ...BASE_CONFIG,
 
-    chunkSize: 3,
-
     hmmStates: 6,
     betLimit: 1,
 
