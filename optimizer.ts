@@ -16,24 +16,47 @@ const BACKTEST_RUNS = 5;
  * to maximise Profit
  * @param params The parameters for running backtest.ts
  */
-async function runBacktest(params: BacktestParams): Promise<number> {
+async function runBacktest(params: BacktestParams, highestProfit: number): Promise<{ minProfit: number; maxProfit: number; averageProfit: number; stdDev: number; }> {
     // Run backtest multiple times and average the profit
     const profits = [];
     for (let i = 0; i < BACKTEST_RUNS; i++) {
         const profit = await runSingleBacktest(params);
+
         profits.push(profit);
+
+        const averageProfit = profits.reduce((sum, p) => sum + p, 0) / profits.length;
+        // if the gap to highest profit is too huge
+        // no need to waste cpu cycles averaging..
+        if (i === 0 && highestProfit - averageProfit > highestProfit * (1 / 3))
+            break;
+        else if (i >= 1 && highestProfit - averageProfit > highestProfit * (1 / 6))
+            break;
+
+        // if hmm is 0, the result is constant and does not vary
+        // so a single run is enough
+        if (params.scoreWeights.hmm === 0)
+            break;
     }
 
     // Calculate average profit
     const averageProfit = profits.reduce((sum, p) => sum + p, 0) / profits.length;
-    return averageProfit;
+
+    // Calculate max profit
+    const maxProfit = Math.max(...profits);
+
+    // Calculate min profit
+    const minProfit = Math.min(...profits);
+
+    const _stdDev = stdDev(...profits);
+
+    return { minProfit, maxProfit, averageProfit, stdDev: _stdDev };
 }
 
 /** @description Runs a single instance of the backtest with given parameters and extracts profit from output */
 async function runSingleBacktest(params: BacktestParams): Promise<number> {
     return new Promise((resolve, reject) => {
         // Build command arguments for backtest execution
-        const args = ["data_historical.txt", "data_current.txt", `--historical-weight=${params.scoreWeights.historical}`, `--hmm-weight=${params.scoreWeights.hmm}`];
+        const args = ["data_historical.txt", "data_current.txt", `--historical-weight=${params.scoreWeights.historical}`, `--hmm-weight=${params.scoreWeights.hmm}`, `--chunk-size=${params.chunkSize}`];
 
         // Add bet limit flag based on params.betLimit value
         if (params.betLimit === 1) {
@@ -86,7 +109,17 @@ async function runSingleBacktest(params: BacktestParams): Promise<number> {
 function fixPrecision(val: number) {
     return parseFloat(val.toFixed(10));
 }
+function stdDev(...numbers: number[]): number {
+    const n = numbers.length;
+    if (n === 0) return 0;
 
+    const mean = numbers.reduce((a, b) => a + b, 0) / n;
+
+    const squaredDiffs = numbers.map(num => Math.pow(num - mean, 2));
+    const variance = squaredDiffs.reduce((a, b) => a + b, 0) / n;  // Population variance
+
+    return Math.sqrt(variance);  // Population std dev
+}
 /**
  * Optimizes the settings for running backtest.ts by testing different combinations of parameters.
  */
@@ -95,21 +128,38 @@ async function optimizeSettings() {
     // Define ranges for each parameter to test
     const betLimits = [1, 2, 3];
     const weightAdjustStep = 0.01;
-    const weightAdjustRange = 0.6;
+    // const weightAdjustRange = 0.6;
+    const weightAdjustRange = 1;
     const historicalWeights = Array.from({ length: fixPrecision(weightAdjustRange / weightAdjustStep) }, (_, i) => fixPrecision(1 - i * weightAdjustStep));
 
     // Initialize tracking variables for best results
-    let bestParams: BacktestParams = {
+    let bestMaxParams: BacktestParams = {
         betLimit: 1,
         chunkSize: 3,
         scoreWeights: { historical: 0, hmm: 0 },
     };
-    let highestProfit = -Infinity;
+    let bestAverageParams: BacktestParams = {
+        betLimit: 1,
+        chunkSize: 3,
+        scoreWeights: { historical: 0, hmm: 0 },
+    };
+    let highestMaxProfit: number;
+    let highestAverageProfit: number;
+
+    let results: {
+        type: 'max profit' | 'average profit'
+        betLimit: number;
+        params: BacktestParams;
+        profit: number;
+    }[] = [];
 
     // Test all combinations of parameters
     for (const betLimit of betLimits) {
-        for (const chunkSize of [3, 6]) {
-            for (const historicalWeight of historicalWeights) {
+        highestMaxProfit = -Infinity;
+        highestAverageProfit = -Infinity;
+
+        for (const historicalWeight of historicalWeights) {
+            for (const chunkSize of [3, 6]) {
                 const hmmWeight = fixPrecision(1 - historicalWeight);
                 const params: BacktestParams = {
                     betLimit,
@@ -119,25 +169,59 @@ async function optimizeSettings() {
 
                 try {
                     // Run backtest and capture profit
-                    const profit = await runBacktest(params);
-                    console.log(`Profit for ${JSON.stringify(params)}: ${profit}`);
+                    const { minProfit, maxProfit, averageProfit, stdDev: _stdDev } = await runBacktest(params, highestMaxProfit);
+                    console.log(`Profit for ${JSON.stringify(params)}: min: ${minProfit} max: ${maxProfit} average: ${averageProfit.toFixed(1)} std dev: ${_stdDev.toFixed(2)}`);
                     console.log();
 
                     // Update best parameters if current profit is higher
-                    if (profit > highestProfit) {
-                        highestProfit = profit;
-                        bestParams = params;
+                    if (maxProfit > highestMaxProfit) {
+                        highestMaxProfit = maxProfit;
+                        bestMaxParams = params;
+                        results = results.filter(r => (r.betLimit !== betLimit) || (r.betLimit === betLimit && r.type !== 'max profit') || (r.betLimit === betLimit && r.type === 'max profit' && r.profit === highestMaxProfit));
+                        results.push({
+                            type: 'max profit',
+                            betLimit,
+                            params,
+                            profit: maxProfit,
+                        });
+                    }
+                    if (averageProfit > highestAverageProfit) {
+                        highestAverageProfit = averageProfit;
+                        bestAverageParams = params;
+                        results = results.filter(r => (r.betLimit !== betLimit) || (r.betLimit === betLimit && r.type !== 'average profit') || (r.betLimit === betLimit && r.type === 'average profit' && r.profit === highestAverageProfit));
+                        results.push({
+                            type: 'average profit',
+                            betLimit,
+                            params,
+                            profit: averageProfit,
+                        });
                     }
                 } catch (error) {
                     console.error(`Error running backtest with params ${JSON.stringify(params)}:`, error);
                 }
             }
         }
+
+        // Display final results
+        console.log(new Array(120).fill('-').join(''));
+        console.log(`Best parameters for bet limit=${betLimit}:`, bestMaxParams);
+        console.log("Highest Max Profit:", highestMaxProfit);
+        console.log();
+        console.log(`Best parameters for bet limit=${betLimit}:`, bestAverageParams);
+        console.log("Highest Average Profit:", highestAverageProfit.toFixed(1));
+        console.log();
     }
 
-    // Display final results
-    console.log("Best parameters:", bestParams);
-    console.log("Highest Profit:", highestProfit);
+    for (const { type, betLimit, params, profit } of results) {
+        console.log(`Best parameters for bet limit=${betLimit}:`, params);
+        if (type === 'average profit') {
+            console.log("Highest Average  Profit:", profit.toFixed(1));
+        } else if (type === 'max profit') {
+            console.log("Highest Max Profit:", profit);
+        }
+
+        console.log();
+    }
 }
 
 /** @description Entry point - starts the optimization process */
