@@ -78,6 +78,8 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
 export const CONFIG_BET2: BacktestConfig = {
     ...BASE_CONFIG,
 
+    chunkSize: 2,
+
     betLimit: 2,
 
     scoreWeights: {
