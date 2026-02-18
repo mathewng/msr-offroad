@@ -161,8 +161,9 @@ export class HMM {
                         const alphaVal = alpha[tOff + i]!;
                         const iOff = i * N;
                         for (let j = 0; j < N; j++) {
-                            // Probability of transitioning from state i to j at time t
-                            const val = alphaVal * this.A[iOff + j]! * this.B[j * M + oNext]! * beta[ntOff + j]!;
+                            // If the next observation is missing, treat the emission probability as 1.0
+                            const emissionProb = oNext === -1 ? 1.0 : this.B[j * M + oNext]!;
+                            const val = alphaVal * this.A[iOff + j]! * emissionProb * beta[ntOff + j]!;
                             xi[xiBaseOff + iOff + j] = val;
                             denom += val;
                         }
@@ -217,7 +218,10 @@ export class HMM {
                 // Re-estimate Emission Matrix (B)
                 for (let j = 0; j < N; j++) {
                     let denom = 0;
-                    for (let t = 0; t < T; t++) denom += gamma[t * N + j]!;
+                    // Only sum gamma for steps where the observation is NOT missing
+                    for (let t = 0; t < T; t++) {
+                        if (obs[t] !== -1) denom += gamma[t * N + j]!;
+                    }
                     if (denom === 0) denom = 1e-20;
                     const invDenom = 1.0 / denom;
 
@@ -225,7 +229,10 @@ export class HMM {
                     // Zero out and accumulate emissions across the whole sequence
                     for (let k = 0; k < M; k++) this.B[jOff + k] = 0;
                     for (let t = 0; t < T; t++) {
-                        this.B[jOff + obs[t]!]! += gamma[t * N + j]!;
+                        const ot = obs[t]!;
+                        if (ot !== -1) {
+                            this.B[jOff + ot]! += gamma[t * N + j]!;
+                        }
                     }
                     for (let k = 0; k < M; k++) this.B[jOff + k]! *= invDenom;
                 }
@@ -257,7 +264,9 @@ export class HMM {
         const o0 = obs[0]!;
         let rowSum0 = 0;
         for (let i = 0; i < N; i++) {
-            const val = this.pi[i]! * this.B[i * M + o0]!;
+            // If the first observation is missing, treat the emission probability as 1.0
+            const emissionProb = o0 === -1 ? 1.0 : this.B[i * M + o0]!;
+            const val = this.pi[i]! * emissionProb;
             alpha[i] = val;
             rowSum0 += val;
         }
@@ -281,7 +290,9 @@ export class HMM {
                 for (let i = 0; i < N; i++) {
                     sum += alpha[ptOff + i]! * this.At[jOff + i]!;
                 }
-                const val = sum * this.B[j * M + ot]!;
+                // If the observation is missing, treat the emission probability as 1.0
+                const emissionProb = ot === -1 ? 1.0 : this.B[j * M + ot]!;
+                const val = sum * emissionProb;
                 alpha[tOff + j] = val;
                 rowSum += val;
             }
@@ -317,7 +328,9 @@ export class HMM {
                 let sum = 0;
                 const iOff = i * N;
                 for (let j = 0; j < N; j++) {
-                    sum += this.A[iOff + j]! * this.B[j * M + onext]! * beta[ntOff + j]!;
+                    // If the next observation is missing, treat the emission probability as 1.0
+                    const emissionProb = onext === -1 ? 1.0 : this.B[j * M + onext]!;
+                    sum += this.A[iOff + j]! * emissionProb * beta[ntOff + j]!;
                 }
                 beta[tOff + i] = sum;
                 rowSum += sum;

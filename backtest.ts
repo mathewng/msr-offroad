@@ -123,7 +123,8 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
     };
 
     // Prepare the initial observation sequence for the HMM (slot index * 3 + payout bucket)
-    let sequence = history.filter((r) => r.winningSlot !== null && r.winningPayout !== null).map((r) => (r.winningSlot! - 1) * 3 + getPayoutBucket(r.winningPayout!, r.winningSlot!));
+    // Use -1 for missing observations to maintain temporal sequence
+    let sequence = history.map((r) => (r.winningSlot !== null && r.winningPayout !== null ? (r.winningSlot - 1) * 3 + getPayoutBucket(r.winningPayout, r.winningSlot) : -1));
 
     // Pre-allocate reusable SharedArrayBuffer with extra capacity
     const maxSequenceLength = sequence.length + currentMonthRaces.length;
@@ -216,6 +217,8 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
             if (!isPending) {
                 sequence.push((currentRace.winningSlot! - 1) * 3 + getPayoutBucket(currentRace.winningPayout!, currentRace.winningSlot!));
                 updateStats(currentStats, currentRace, config);
+            } else {
+                sequence.push(-1); // Maintain temporal sequence even for unknown results
             }
             history.push(currentRace);
         }

@@ -47,27 +47,26 @@ export function parseLines(lines: string[]): Race[] {
 
             // Reuse arrays instead of creating new ones
             for (let i = 0; i < 6; i++) {
-                winIndicators[i] = parseInt(parts[3 + i]?.trim() || "0");
-                payouts[i] = parseFloat(parts[10 + i]?.trim() || "0");
+                const winPart = parts[3 + i]?.trim();
+                const payPart = parts[10 + i]?.trim();
+                winIndicators[i] = winPart === "?" ? NaN : parseInt(winPart || "0");
+                payouts[i] = payPart === "?" ? NaN : parseFloat(payPart || "0");
             }
 
-            // Ensure we have 6 valid numbers for both winnings and payouts
-            if (winIndicators.every((n) => !isNaN(n)) && payouts.every((n) => !isNaN(n))) {
-                const winningIndex = winIndicators.findIndex((n) => n === 1);
-                const winningSlot = winningIndex !== -1 ? winningIndex + 1 : null;
-                const winningPayout = winningSlot !== null ? payouts[winningIndex] : null;
+            const winningIndex = winIndicators.findIndex((n) => n === 1);
+            const winningSlot = winningIndex !== -1 ? winningIndex + 1 : null;
+            const winningPayout = winningSlot !== null ? payouts[winningIndex - 1 + 1] : null;
 
-                races.push({
-                    day: currentDay,
-                    venue: lastVenue,
-                    time: lastTime,
-                    raceNumber: roundNum,
-                    payouts: [...payouts], // Only copy when needed
-                    bets: [],
-                    winningSlot,
-                    winningPayout: winningPayout ?? null,
-                });
-            }
+            races.push({
+                day: currentDay,
+                venue: lastVenue,
+                time: lastTime,
+                raceNumber: roundNum,
+                payouts: [...payouts], // Only copy when needed
+                bets: [],
+                winningSlot,
+                winningPayout: winningPayout && !isNaN(winningPayout) ? winningPayout : null,
+            });
         }
     }
     return races;
