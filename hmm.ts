@@ -200,21 +200,20 @@ export class HMM {
                 // 2. E-Step Part B: Backward Pass (compute beta)
                 this.computeBackward(obs, beta);
 
-                // 3. E-Step Part C: Consolidation & Accumulation
-                // Reset accumulators
+                // 3. E-Step Part C: On-the-fly accumulation (no xi buffer)
                 accumA.fill(0);
                 accumB.fill(0);
                 denomA.fill(0);
                 denomB.fill(0);
 
                 for (let t = 0; t < T - 1; t++) {
-                    let jointDenom = 0;
                     const tOff = t * N;
                     const ntOff = (t + 1) * N;
                     const oCurr = obs[t]!;
                     const oNext = obs[t + 1]!;
 
-                    // Compute joint denominator for scaling xi and gamma
+                    // Compute normalization factor once per timestep
+                    let jointDenom = 0;
                     for (let i = 0; i < N; i++) {
                         const alphaVal = alpha[tOff + i]!;
                         const iOff = i * N;
@@ -223,16 +222,14 @@ export class HMM {
                             jointDenom += alphaVal * this.A[iOff + j]! * emissionProb * beta[ntOff + j]!;
                         }
                     }
+                    const invJointDenom = jointDenom === 0 ? 1e20 : 1.0 / jointDenom;
 
-                    if (jointDenom === 0) jointDenom = 1e-20;
-                    const invJointDenom = 1.0 / jointDenom;
-
+                    // Accumulate A, B, and denominators in single pass
                     for (let i = 0; i < N; i++) {
                         const alphaVal = alpha[tOff + i]!;
                         const iOff = i * N;
                         let gamma_ti = 0;
 
-                        // Calculate xi_t(i, j) and accumulate into A's numerator and gamma_t(i)
                         for (let j = 0; j < N; j++) {
                             const emissionProb = oNext === -1 ? 1.0 : this.B[j * M + oNext]!;
                             const xi_tij = alphaVal * this.A[iOff + j]! * emissionProb * beta[ntOff + j]! * invJointDenom;
@@ -240,11 +237,7 @@ export class HMM {
                             gamma_ti += xi_tij;
                         }
 
-                        // Re-estimate Initial Probabilities (pi) using gamma_0
-                        // This is stored temporarily and smoothed in the M-Step
                         if (t === 0) this.pi[i] = gamma_ti;
-
-                        // Accumulate for transition denominator and emission re-estimation
                         denomA[i]! += gamma_ti;
                         if (oCurr !== -1) {
                             accumB[i * M + oCurr]! += gamma_ti;
@@ -253,12 +246,11 @@ export class HMM {
                     }
                 }
 
-                // Handle the terminal state T-1 for B accumulation
-                let terminalDenom = 0;
+                // Terminal state
                 const lastOff = (T - 1) * N;
+                let terminalDenom = 0;
                 for (let i = 0; i < N; i++) terminalDenom += alpha[lastOff + i]!;
-                if (terminalDenom === 0) terminalDenom = 1e-20;
-                const invTerminalDenom = 1.0 / terminalDenom;
+                const invTerminalDenom = terminalDenom === 0 ? 1e20 : 1.0 / terminalDenom;
                 const oLast = obs[T - 1]!;
 
                 for (let i = 0; i < N; i++) {
