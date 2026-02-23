@@ -192,6 +192,7 @@ export class HMM {
                         }
 
                         // Re-estimate Initial Probabilities (pi) using gamma_0
+                        // This is stored temporarily and smoothed in the M-Step
                         if (t === 0) this.pi[i] = gamma_ti;
 
                         // Accumulate for transition denominator and emission re-estimation
@@ -221,6 +222,16 @@ export class HMM {
 
                 // 4. M-Step: Maximum Likelihood Re-estimation
                 const epsilon = 1e-10;
+
+                // Re-estimate and smooth Initial Probabilities (pi)
+                let piSum = 0;
+                for (let i = 0; i < N; i++) {
+                    this.pi[i]! += epsilon;
+                    piSum += this.pi[i]!;
+                }
+                const invPiSum = 1.0 / piSum;
+                for (let i = 0; i < N; i++) this.pi[i]! *= invPiSum;
+
                 for (let i = 0; i < N; i++) {
                     const iOff = i * N;
                     // Add epsilon for smoothing to avoid zero probabilities
