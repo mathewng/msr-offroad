@@ -220,17 +220,20 @@ export class HMM {
                 }
 
                 // 4. M-Step: Maximum Likelihood Re-estimation
+                const epsilon = 1e-10;
                 for (let i = 0; i < N; i++) {
                     const iOff = i * N;
-                    const invDenomA = 1.0 / (denomA[i] || 1e-20);
+                    // Add epsilon for smoothing to avoid zero probabilities
+                    const invDenomA = 1.0 / (denomA[i]! + (N * epsilon));
                     for (let j = 0; j < N; j++) {
-                        this.A[iOff + j] = accumA[iOff + j]! * invDenomA;
+                        this.A[iOff + j] = (accumA[iOff + j]! + epsilon) * invDenomA;
                     }
 
                     const iOffB = i * M;
-                    const invDenomB = 1.0 / (denomB[i] || 1e-20);
+                    // Add epsilon for smoothing to avoid zero probabilities
+                    const invDenomB = 1.0 / (denomB[i]! + (M * epsilon));
                     for (let k = 0; k < M; k++) {
-                        this.B[iOffB + k] = accumB[iOffB + k]! * invDenomB;
+                        this.B[iOffB + k] = (accumB[iOffB + k]! + epsilon) * invDenomB;
                     }
                 }
 
