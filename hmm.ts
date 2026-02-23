@@ -123,8 +123,10 @@ export class HMM {
         // Use buffer pool to avoid garbage collection overhead
         const alpha = BufferPool.get(T * N);
         const beta = BufferPool.get(T * N);
-        const gamma = BufferPool.get(T * N);
-        const xi = BufferPool.get((T - 1) * N * N);
+        const accumA = BufferPool.get(N * N);
+        const accumB = BufferPool.get(N * M);
+        const denomA = BufferPool.get(N);
+        const denomB = BufferPool.get(N);
 
         try {
             let oldLogLikelihood = -Infinity;
@@ -149,92 +151,87 @@ export class HMM {
                 // 2. E-Step Part B: Backward Pass (compute beta)
                 this.computeBackward(obs, beta);
 
-                // 3. E-Step Part C: Compute joint probabilities (xi) and state marginals (gamma)
+                // 3. E-Step Part C: Consolidation & Accumulation
+                // Reset accumulators
+                accumA.fill(0);
+                accumB.fill(0);
+                denomA.fill(0);
+                denomB.fill(0);
+
                 for (let t = 0; t < T - 1; t++) {
-                    let denom = 0;
+                    let jointDenom = 0;
                     const tOff = t * N;
                     const ntOff = (t + 1) * N;
+                    const oCurr = obs[t]!;
                     const oNext = obs[t + 1]!;
-                    const xiBaseOff = t * N * N;
 
+                    // Compute joint denominator for scaling xi and gamma
                     for (let i = 0; i < N; i++) {
                         const alphaVal = alpha[tOff + i]!;
                         const iOff = i * N;
                         for (let j = 0; j < N; j++) {
-                            // If the next observation is missing, treat the emission probability as 1.0
                             const emissionProb = oNext === -1 ? 1.0 : this.B[j * M + oNext]!;
-                            const val = alphaVal * this.A[iOff + j]! * emissionProb * beta[ntOff + j]!;
-                            xi[xiBaseOff + iOff + j] = val;
-                            denom += val;
+                            jointDenom += alphaVal * this.A[iOff + j]! * emissionProb * beta[ntOff + j]!;
                         }
                     }
 
-                    if (denom === 0) denom = 1e-20;
-                    const invDenom = 1.0 / denom;
+                    if (jointDenom === 0) jointDenom = 1e-20;
+                    const invJointDenom = 1.0 / jointDenom;
 
                     for (let i = 0; i < N; i++) {
-                        let g_sum = 0;
+                        const alphaVal = alpha[tOff + i]!;
                         const iOff = i * N;
+                        let gamma_ti = 0;
+
+                        // Calculate xi_t(i, j) and accumulate into A's numerator and gamma_t(i)
                         for (let j = 0; j < N; j++) {
-                            const xiIdx = xiBaseOff + iOff + j;
-                            const normalizedXi = xi[xiIdx]! * invDenom;
-                            xi[xiIdx] = normalizedXi;
-                            g_sum += normalizedXi;
+                            const emissionProb = oNext === -1 ? 1.0 : this.B[j * M + oNext]!;
+                            const xi_tij = alphaVal * this.A[iOff + j]! * emissionProb * beta[ntOff + j]! * invJointDenom;
+                            accumA[iOff + j]! += xi_tij;
+                            gamma_ti += xi_tij;
                         }
-                        // Gamma is the probability of being in state i at time t
-                        gamma[tOff + i] = g_sum;
+
+                        // Re-estimate Initial Probabilities (pi) using gamma_0
+                        if (t === 0) this.pi[i] = gamma_ti;
+
+                        // Accumulate for transition denominator and emission re-estimation
+                        denomA[i]! += gamma_ti;
+                        if (oCurr !== -1) {
+                            accumB[i * M + oCurr]! += gamma_ti;
+                            denomB[i]! += gamma_ti;
+                        }
                     }
                 }
 
-                // Handle the terminal state transition for gamma
-                let lastDenom = 0;
+                // Handle the terminal state T-1 for B accumulation
+                let terminalDenom = 0;
                 const lastOff = (T - 1) * N;
-                for (let i = 0; i < N; i++) lastDenom += alpha[lastOff + i]!;
-                if (lastDenom === 0) lastDenom = 1e-20;
-                const invLastDenom = 1.0 / lastDenom;
-                for (let i = 0; i < N; i++) gamma[lastOff + i] = alpha[lastOff + i]! * invLastDenom;
+                for (let i = 0; i < N; i++) terminalDenom += alpha[lastOff + i]!;
+                if (terminalDenom === 0) terminalDenom = 1e-20;
+                const invTerminalDenom = 1.0 / terminalDenom;
+                const oLast = obs[T - 1]!;
+
+                for (let i = 0; i < N; i++) {
+                    const gamma_Ti = alpha[lastOff + i]! * invTerminalDenom;
+                    if (oLast !== -1) {
+                        accumB[i * M + oLast]! += gamma_Ti;
+                        denomB[i]! += gamma_Ti;
+                    }
+                }
 
                 // 4. M-Step: Maximum Likelihood Re-estimation
-
-                // Re-estimate Initial Probabilities (pi)
-                for (let i = 0; i < N; i++) this.pi[i] = gamma[i]!;
-
-                // Re-estimate Transition Matrix (A)
                 for (let i = 0; i < N; i++) {
-                    let denom = 0;
-                    for (let t = 0; t < T - 1; t++) denom += gamma[t * N + i]!;
-                    if (denom === 0) denom = 1e-20;
-                    const invDenom = 1.0 / denom;
-
                     const iOff = i * N;
+                    const invDenomA = 1.0 / (denomA[i] || 1e-20);
                     for (let j = 0; j < N; j++) {
-                        let numer = 0;
-                        const ijOff = i * N + j;
-                        for (let t = 0; t < T - 1; t++) numer += xi[t * N * N + ijOff]!;
-                        this.A[iOff + j] = numer * invDenom;
+                        this.A[iOff + j] = accumA[iOff + j]! * invDenomA;
                     }
-                }
 
-                // Re-estimate Emission Matrix (B)
-                for (let j = 0; j < N; j++) {
-                    let denom = 0;
-                    // Only sum gamma for steps where the observation is NOT missing
-                    for (let t = 0; t < T; t++) {
-                        if (obs[t] !== -1) denom += gamma[t * N + j]!;
+                    const iOffB = i * M;
+                    const invDenomB = 1.0 / (denomB[i] || 1e-20);
+                    for (let k = 0; k < M; k++) {
+                        this.B[iOffB + k] = accumB[iOffB + k]! * invDenomB;
                     }
-                    if (denom === 0) denom = 1e-20;
-                    const invDenom = 1.0 / denom;
-
-                    const jOff = j * M;
-                    // Zero out and accumulate emissions across the whole sequence
-                    for (let k = 0; k < M; k++) this.B[jOff + k] = 0;
-                    for (let t = 0; t < T; t++) {
-                        const ot = obs[t]!;
-                        if (ot !== -1) {
-                            this.B[jOff + ot]! += gamma[t * N + j]!;
-                        }
-                    }
-                    for (let k = 0; k < M; k++) this.B[jOff + k]! *= invDenom;
                 }
 
                 // Sync the transposed copy
@@ -244,8 +241,10 @@ export class HMM {
             // Return buffers to pool for reuse
             BufferPool.release(alpha);
             BufferPool.release(beta);
-            BufferPool.release(gamma);
-            BufferPool.release(xi);
+            BufferPool.release(accumA);
+            BufferPool.release(accumB);
+            BufferPool.release(denomA);
+            BufferPool.release(denomB);
         }
     }
 
