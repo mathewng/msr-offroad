@@ -25,7 +25,11 @@ self.onmessage = (event: MessageEvent) => {
     // 1. Initialize a new HMM with random parameters
     const hmm = new HMM(numStates, numObservations);
 
-    // 2. Train the model using the Baum-Welch (EM) algorithm
+    // 2. Seed with global frequencies + random noise to improve convergence
+    // while maintaining ensemble diversity.
+    hmm.initializeFromData(sequence);
+
+    // 3. Train the model using the Baum-Welch (EM) algorithm
     // This is the primary CPU-intensive operation.
     hmm.train(sequence, iterations, tolerance);
 

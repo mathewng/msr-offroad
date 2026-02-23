@@ -88,6 +88,55 @@ export class HMM {
     }
 
     /**
+     * Seeding: Uses global observation frequencies as a base and adds unique
+     * random noise for each hidden state. This "pulls" the model toward the
+     * real distribution but keeps each model in the ensemble unique.
+     *
+     * @param observations - The data used to calculate global frequencies.
+     */
+    public initializeFromData(observations: number[] | Int32Array) {
+        const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
+        const frequencies = new Float64Array(this.numObservations);
+        let totalCount = 0;
+
+        // Calculate global observation frequency
+        for (let t = 0; t < obs.length; t++) {
+            const o = obs[t]!;
+            if (o !== -1) {
+                frequencies[o]!++;
+                totalCount++;
+            }
+        }
+
+        if (totalCount === 0) return;
+
+        // Normalize frequencies
+        const invTotal = 1.0 / totalCount;
+        for (let k = 0; k < this.numObservations; k++) frequencies[k]! *= invTotal;
+
+        // Seed each state's emission matrix (B) with randomized frequencies
+        for (let i = 0; i < this.numStates; i++) {
+            const offset = i * this.numObservations;
+            let rowSum = 0;
+
+            for (let k = 0; k < this.numObservations; k++) {
+                // Perturb the global frequency by 50-100% per observation per state
+                // This ensures each worker starts with a unique view of the clusters
+                const randomShift = 0.5 + rng.next(); // 0.5 to 1.5
+                const val = (frequencies[k]! * randomShift) + 1e-10;
+                this.B[offset + k] = val;
+                rowSum += val;
+            }
+
+            // Normalize the row
+            const invRowSum = 1.0 / rowSum;
+            for (let k = 0; k < this.numObservations; k++) {
+                this.B[offset + k]! *= invRowSum;
+            }
+        }
+    }
+
+    /**
      * Fills an array with random values and normalizes so they sum to 1.0.
      */
     private fillRandomNormalized(arr: Float64Array) {
