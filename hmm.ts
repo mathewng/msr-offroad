@@ -23,11 +23,20 @@ import RandomPool from "./random-pool";
 const rng = new RandomPool();
 
 /**
- * Object pool for reusing Float64Array buffers to reduce GC pressure
+ * Object pool for reusing Float64Array buffers to reduce Garbage Collection (GC) pressure.
+ *
+ * During the Baum-Welch (EM) algorithm, multiple large matrices (alpha, beta, etc.)
+ * are required for each training session. Frequent allocation of these arrays
+ * triggers heavy GC, which degrades performance in high-throughput environments.
+ * This pool retains buffers by size for immediate reuse.
  */
 class BufferPool {
     private static pools = new Map<number, Float64Array[]>();
 
+    /**
+     * Retrieves a buffer of the requested size from the pool, or creates a new one.
+     * @param size - The required length of the Float64Array.
+     */
     static get(size: number): Float64Array {
         const pool = this.pools.get(size);
         if (pool && pool.length > 0) {
@@ -36,12 +45,17 @@ class BufferPool {
         return new Float64Array(size);
     }
 
+    /**
+     * Returns a buffer to the pool for later reuse.
+     * Fills the buffer with 0 to ensure no stale data carries over.
+     * @param buffer - The Float64Array to be recycled.
+     */
     static release(buffer: Float64Array): void {
         const size = buffer.length;
         if (!this.pools.has(size)) {
             this.pools.set(size, []);
         }
-        buffer.fill(0); // Clear for reuse
+        buffer.fill(0); // Clear for reuse to prevent data leakage between iterations
         this.pools.get(size)!.push(buffer);
     }
 }
@@ -88,18 +102,23 @@ export class HMM {
     }
 
     /**
-     * Seeding: Uses global observation frequencies as a base and adds unique
-     * random noise for each hidden state. This "pulls" the model toward the
-     * real distribution but keeps each model in the ensemble unique.
+     * Seeding: Intelligently initializes the emission matrix (B) based on global data.
      *
-     * @param observations - The data used to calculate global frequencies.
+     * To accelerate convergence and prevent the EM algorithm from getting stuck in
+     * poor local optima, we seed each hidden state with the global observation
+     * frequencies, perturbed by random noise. This ensures:
+     * 1. Each state begins with a realistic (though non-specific) emission distribution.
+     * 2. Every state starts slightly differently, allowing the EM algorithm to
+     *    specialize them into different clusters/regimes during training.
+     *
+     * @param observations - Representative data used to calculate global frequencies.
      */
     public initializeFromData(observations: number[] | Int32Array) {
         const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
         const frequencies = new Float64Array(this.numObservations);
         let totalCount = 0;
 
-        // Calculate global observation frequency
+        // Calculate global observation frequency (Prior probability)
         for (let t = 0; t < obs.length; t++) {
             const o = obs[t]!;
             if (o !== -1) {
@@ -128,7 +147,7 @@ export class HMM {
                 rowSum += val;
             }
 
-            // Normalize the row
+            // Normalize the row (sum P(O|S) = 1.0)
             const invRowSum = 1.0 / rowSum;
             for (let k = 0; k < this.numObservations; k++) {
                 this.B[offset + k]! *= invRowSum;
@@ -183,24 +202,27 @@ export class HMM {
 
             for (let iter = 0; iter < iterations; iter++) {
                 // 1. E-Step Part A: Forward Pass (compute alpha)
+                // alpha[t][i] = P(O_1...O_t, state_t = i | model)
                 const logLikelihood = this.computeForward(obs, alpha);
 
-                // Likelihood became zero or invalid
+                // Likelihood became zero or invalid (numerical failure)
                 if (logLikelihood === -Infinity) break;
 
-                // Convergence Check
+                // Convergence Check: Stop if the log-likelihood improvement is below threshold
                 if (tolerance > 0 && iter > 0) {
                     if (Math.abs(logLikelihood - oldLogLikelihood) < tolerance) {
-                        // console.log(`Converged at iteration ${iter} with log-likelihood ${logLikelihood}`);
                         break;
                     }
                 }
                 oldLogLikelihood = logLikelihood;
 
                 // 2. E-Step Part B: Backward Pass (compute beta)
+                // beta[t][i] = P(O_t+1...O_T | state_t = i, model)
                 this.computeBackward(obs, beta);
 
-                // 3. E-Step Part C: On-the-fly accumulation (no xi buffer)
+                // 3. E-Step Part C: Accumulation of Statistics
+                // We calculate expectations of transitions (xi) and state occupancies (gamma)
+                // without allocating massive O(T*N*N) buffers by accumulating on-the-fly.
                 accumA.fill(0);
                 accumB.fill(0);
                 denomA.fill(0);
@@ -212,7 +234,7 @@ export class HMM {
                     const oCurr = obs[t]!;
                     const oNext = obs[t + 1]!;
 
-                    // Compute normalization factor once per timestep
+                    // Compute normalization factor (joint probability P(O | model)) for this timestep
                     let jointDenom = 0;
                     for (let i = 0; i < N; i++) {
                         const alphaVal = alpha[tOff + i]!;
@@ -224,20 +246,24 @@ export class HMM {
                     }
                     const invJointDenom = jointDenom === 0 ? 1e20 : 1.0 / jointDenom;
 
-                    // Accumulate A, B, and denominators in single pass
+                    // Accumulate transition counts (A) and emission counts (B)
                     for (let i = 0; i < N; i++) {
                         const alphaVal = alpha[tOff + i]!;
                         const iOff = i * N;
-                        let gamma_ti = 0;
+                        let gamma_ti = 0; // P(state_t = i | O, model)
 
                         for (let j = 0; j < N; j++) {
                             const emissionProb = oNext === -1 ? 1.0 : this.B[j * M + oNext]!;
+                            // xi_tij = P(state_t = i, state_t+1 = j | O, model)
                             const xi_tij = alphaVal * this.A[iOff + j]! * emissionProb * beta[ntOff + j]! * invJointDenom;
                             accumA[iOff + j]! += xi_tij;
                             gamma_ti += xi_tij;
                         }
 
+                        // Pi re-estimation (initial state distribution)
                         if (t === 0) this.pi[i] = gamma_ti;
+
+                        // Accumulate for transition denominator and emission numerator/denominator
                         denomA[i]! += gamma_ti;
                         if (oCurr !== -1) {
                             accumB[i * M + oCurr]! += gamma_ti;
@@ -246,7 +272,7 @@ export class HMM {
                     }
                 }
 
-                // Terminal state
+                // Handle the terminal state (T-1) for gamma accumulation
                 const lastOff = (T - 1) * N;
                 let terminalDenom = 0;
                 for (let i = 0; i < N; i++) terminalDenom += alpha[lastOff + i]!;
@@ -262,7 +288,8 @@ export class HMM {
                 }
 
                 // 4. M-Step: Maximum Likelihood Re-estimation
-                const epsilon = 1e-10;
+                // Re-calculate A, B, and pi parameters using the accumulated expectations.
+                const epsilon = 1e-10; // Smoothing factor to prevent zero probabilities
 
                 // Re-estimate and smooth Initial Probabilities (pi)
                 let piSum = 0;
@@ -273,23 +300,24 @@ export class HMM {
                 const invPiSum = 1.0 / piSum;
                 for (let i = 0; i < N; i++) this.pi[i]! *= invPiSum;
 
+                // Re-estimate Transition (A) and Emission (B) Matrices
                 for (let i = 0; i < N; i++) {
                     const iOff = i * N;
-                    // Add epsilon for smoothing to avoid zero probabilities
+                    // Transitions: A[i][j] = sum(xi_tij) / sum(gamma_ti)
                     const invDenomA = 1.0 / (denomA[i]! + (N * epsilon));
                     for (let j = 0; j < N; j++) {
                         this.A[iOff + j] = (accumA[iOff + j]! + epsilon) * invDenomA;
                     }
 
                     const iOffB = i * M;
-                    // Add epsilon for smoothing to avoid zero probabilities
+                    // Emissions: B[i][k] = sum(gamma_ti where o_t = k) / sum(gamma_ti)
                     const invDenomB = 1.0 / (denomB[i]! + (M * epsilon));
                     for (let k = 0; k < M; k++) {
                         this.B[iOffB + k] = (accumB[iOffB + k]! + epsilon) * invDenomB;
                     }
                 }
 
-                // Sync the transposed copy
+                // Synchronize the transposed copy used for forward pass performance
                 this.updateTransposedA();
             }
         } finally {
@@ -306,8 +334,15 @@ export class HMM {
     /**
      * Calculates alpha (forward variables): probability of partial sequence O1..Ot
      * ending in state i.
-     * Uses scaling/normalization at each step to avoid numerical underflow.
-     * Returns the total log-likelihood of the observations.
+     *
+     * Numerical Stability:
+     * Standard HMM calculations involve repeated multiplication of probabilities,
+     * leading to geometric decay and floating-point underflow (values becoming 0).
+     * We solve this by normalizing the alpha vector at each timestep 't' such that
+     * sum(alpha_t) = 1.0. The log of each scaling factor is summed to yield the
+     * total log-likelihood of the observation sequence.
+     *
+     * @returns Total log-likelihood of the observations.
      */
     private computeForward(obs: Int32Array, alpha: Float64Array): number {
         const T = obs.length;
@@ -315,22 +350,25 @@ export class HMM {
         const M = this.numObservations;
         let logLikelihood = 0;
 
+        // Initialization Step (t=0)
         const o0 = obs[0]!;
         let rowSum0 = 0;
         for (let i = 0; i < N; i++) {
-            // If the first observation is missing, treat the emission probability as 1.0
+            // Missing observation (-1) handling: P(O|S) = 1.0
             const emissionProb = o0 === -1 ? 1.0 : this.B[i * M + o0]!;
             const val = this.pi[i]! * emissionProb;
             alpha[i] = val;
             rowSum0 += val;
         }
 
-        if (rowSum0 <= 0) return -Infinity;
+        if (rowSum0 <= 0) return -Infinity; // Impossible sequence
 
+        // Scale alpha_0 and record log-scaling factor
         const invRowSum0 = 1.0 / rowSum0;
         for (let i = 0; i < N; i++) alpha[i]! *= invRowSum0;
         logLikelihood += Math.log(rowSum0);
 
+        // Induction Step (t > 0)
         for (let t = 1; t < T; t++) {
             const tOff = t * N;
             const ptOff = (t - 1) * N;
@@ -340,11 +378,11 @@ export class HMM {
             for (let j = 0; j < N; j++) {
                 let sum = 0;
                 const jOff = j * N;
-                // Cache-friendly: At is transposed, so we access sequentially
+                // Cache-friendly: At is transposed, so we access sequentially [j*N + i]
+                // which corresponds to A[i][j]. This improves SIMD and cache locality.
                 for (let i = 0; i < N; i++) {
                     sum += alpha[ptOff + i]! * this.At[jOff + i]!;
                 }
-                // If the observation is missing, treat the emission probability as 1.0
                 const emissionProb = ot === -1 ? 1.0 : this.B[j * M + ot]!;
                 const val = sum * emissionProb;
                 alpha[tOff + j] = val;
@@ -353,6 +391,7 @@ export class HMM {
 
             if (rowSum <= 0) return -Infinity;
 
+            // Scale alpha_t and record log-scaling factor
             const invRowSum = 1.0 / rowSum;
             for (let i = 0; i < N; i++) alpha[tOff + i]! *= invRowSum;
             logLikelihood += Math.log(rowSum);
@@ -363,15 +402,23 @@ export class HMM {
     /**
      * Calculates beta (backward variables): probability of partial sequence Ot+1..OT
      * given state i at time t.
+     *
+     * Numerical Stability:
+     * Like computeForward, beta is scaled at each timestep. While beta doesn't
+     * directly yield log-likelihood, using the same scaling factors as alpha
+     * ensures that alpha[t][i] * beta[t][i] remains proportional to the
+     * posterior probability of being in state i at time t.
      */
     private computeBackward(obs: Int32Array, beta: Float64Array) {
         const T = obs.length;
         const N = this.numStates;
         const M = this.numObservations;
 
+        // Initialization Step (t=T-1)
         const lastOff = (T - 1) * N;
         for (let i = 0; i < N; i++) beta[lastOff + i] = 1;
 
+        // Induction Step (t < T-1)
         for (let t = T - 2; t >= 0; t--) {
             const tOff = t * N;
             const ntOff = (t + 1) * N;
@@ -382,7 +429,6 @@ export class HMM {
                 let sum = 0;
                 const iOff = i * N;
                 for (let j = 0; j < N; j++) {
-                    // If the next observation is missing, treat the emission probability as 1.0
                     const emissionProb = onext === -1 ? 1.0 : this.B[j * M + onext]!;
                     sum += this.A[iOff + j]! * emissionProb * beta[ntOff + j]!;
                 }
@@ -390,7 +436,7 @@ export class HMM {
                 rowSum += sum;
             }
 
-            // Normalization to maintain numerical stability
+            // Normalization to maintain parity with forward scaling
             if (rowSum === 0) rowSum = 1e-20;
             const invRowSum = 1.0 / rowSum;
             for (let i = 0; i < N; i++) beta[tOff + i]! *= invRowSum;
@@ -407,10 +453,17 @@ export class HMM {
     /**
      * Efficiently predicts probabilities for future observations.
      *
-     * 1. Runs the Forward Algorithm to find the state distribution for the
-     *    most recent observation.
-     * 2. Iteratively multiplies the distribution by the transition matrix (A).
-     * 3. Projects the state distribution onto the observation space using (B).
+     * Implementation:
+     * 1. Filtering: Runs the Forward Algorithm to find the posterior state distribution
+     *    given all known observations O_1...O_T.
+     * 2. State Projection: Iteratively projects the distribution into the future using
+     *    the transition matrix A (Markov property).
+     * 3. Emission Projection: At each future step, projects the state distribution
+     *    onto the observation space using the emission matrix B.
+     *
+     * @param observations - The sequence of observations to base the prediction on.
+     * @param maxSteps - Number of steps into the future to predict.
+     * @returns A 2D array where [s][k] is the probability of observation k at step s.
      */
     public predictSteps(observations: number[] | Int32Array, maxSteps: number): number[][] {
         const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
