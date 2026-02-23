@@ -380,7 +380,19 @@ export class HMM {
                 const jOff = j * N;
                 // Cache-friendly: At is transposed, so we access sequentially [j*N + i]
                 // which corresponds to A[i][j]. This improves SIMD and cache locality.
-                for (let i = 0; i < N; i++) {
+                let i = 0;
+                const limit = N - (N % 8);
+                for (; i < limit; i += 8) {
+                    sum += alpha[ptOff + i]! * this.At[jOff + i]! +
+                           alpha[ptOff + i + 1]! * this.At[jOff + i + 1]! +
+                           alpha[ptOff + i + 2]! * this.At[jOff + i + 2]! +
+                           alpha[ptOff + i + 3]! * this.At[jOff + i + 3]! +
+                           alpha[ptOff + i + 4]! * this.At[jOff + i + 4]! +
+                           alpha[ptOff + i + 5]! * this.At[jOff + i + 5]! +
+                           alpha[ptOff + i + 6]! * this.At[jOff + i + 6]! +
+                           alpha[ptOff + i + 7]! * this.At[jOff + i + 7]!;
+                }
+                for (; i < N; i++) {
                     sum += alpha[ptOff + i]! * this.At[jOff + i]!;
                 }
                 const emissionProb = ot === -1 ? 1.0 : this.B[j * M + ot]!;
@@ -418,28 +430,56 @@ export class HMM {
         const lastOff = (T - 1) * N;
         for (let i = 0; i < N; i++) beta[lastOff + i] = 1;
 
-        // Induction Step (t < T-1)
-        for (let t = T - 2; t >= 0; t--) {
-            const tOff = t * N;
-            const ntOff = (t + 1) * N;
-            const onext = obs[t + 1]!;
-            let rowSum = 0;
+        const bBeta = BufferPool.get(N);
+        try {
+            // Induction Step (t < T-1)
+            for (let t = T - 2; t >= 0; t--) {
+                const tOff = t * N;
+                const ntOff = (t + 1) * N;
+                const onext = obs[t + 1]!;
+                let rowSum = 0;
 
-            for (let i = 0; i < N; i++) {
-                let sum = 0;
-                const iOff = i * N;
-                for (let j = 0; j < N; j++) {
-                    const emissionProb = onext === -1 ? 1.0 : this.B[j * M + onext]!;
-                    sum += this.A[iOff + j]! * emissionProb * beta[ntOff + j]!;
+                // Pre-calculate the emission-scaled beta for this time step
+                if (onext === -1) {
+                    for (let j = 0; j < N; j++) bBeta[j] = beta[ntOff + j]!;
+                } else {
+                    for (let j = 0; j < N; j++) {
+                        bBeta[j] = this.B[j * M + onext]! * beta[ntOff + j]!;
+                    }
                 }
-                beta[tOff + i] = sum;
-                rowSum += sum;
-            }
 
-            // Normalization to maintain parity with forward scaling
-            if (rowSum === 0) rowSum = 1e-20;
-            const invRowSum = 1.0 / rowSum;
-            for (let i = 0; i < N; i++) beta[tOff + i]! *= invRowSum;
+                for (let i = 0; i < N; i++) {
+                    let sum = 0;
+                    const iOff = i * N;
+
+                    // Vectorized/Unrolled dot product: sum += A[i] * (B * beta[t+1])
+                    let j = 0;
+                    const limit = N - (N % 8);
+                    for (; j < limit; j += 8) {
+                        sum += this.A[iOff + j]! * bBeta[j]! +
+                               this.A[iOff + j + 1]! * bBeta[j + 1]! +
+                               this.A[iOff + j + 2]! * bBeta[j + 2]! +
+                               this.A[iOff + j + 3]! * bBeta[j + 3]! +
+                               this.A[iOff + j + 4]! * bBeta[j + 4]! +
+                               this.A[iOff + j + 5]! * bBeta[j + 5]! +
+                               this.A[iOff + j + 6]! * bBeta[j + 6]! +
+                               this.A[iOff + j + 7]! * bBeta[j + 7]!;
+                    }
+                    for (; j < N; j++) {
+                        sum += this.A[iOff + j]! * bBeta[j]!;
+                    }
+
+                    beta[tOff + i] = sum;
+                    rowSum += sum;
+                }
+
+                // Normalization to maintain parity with forward scaling
+                if (rowSum === 0) rowSum = 1e-20;
+                const invRowSum = 1.0 / rowSum;
+                for (let i = 0; i < N; i++) beta[tOff + i]! *= invRowSum;
+            }
+        } finally {
+            BufferPool.release(bBeta);
         }
     }
 
@@ -506,7 +546,20 @@ export class HMM {
                 for (let j = 0; j < N; j++) {
                     let sum = 0;
                     const jOff = j * N;
-                    for (let i = 0; i < N; i++) {
+                    // Vectorized/Unrolled dot product
+                    let i = 0;
+                    const limit = N - (N % 8);
+                    for (; i < limit; i += 8) {
+                        sum += stateDistribution[i]! * this.At[jOff + i]! +
+                               stateDistribution[i + 1]! * this.At[jOff + i + 1]! +
+                               stateDistribution[i + 2]! * this.At[jOff + i + 2]! +
+                               stateDistribution[i + 3]! * this.At[jOff + i + 3]! +
+                               stateDistribution[i + 4]! * this.At[jOff + i + 4]! +
+                               stateDistribution[i + 5]! * this.At[jOff + i + 5]! +
+                               stateDistribution[i + 6]! * this.At[jOff + i + 6]! +
+                               stateDistribution[i + 7]! * this.At[jOff + i + 7]!;
+                    }
+                    for (; i < N; i++) {
                         sum += stateDistribution[i]! * this.At[jOff + i]!;
                     }
                     nextStateDist[j] = sum;
@@ -518,7 +571,20 @@ export class HMM {
                 for (let state = 0; state < N; state++) {
                     const prob = stateDistribution[state]!;
                     const sOff = state * M;
-                    for (let k = 0; k < M; k++) {
+                    
+                    let k = 0;
+                    const mLimit = M - (M % 8);
+                    for (; k < mLimit; k += 8) {
+                        probs[k] += prob * this.B[sOff + k]!;
+                        probs[k + 1] += prob * this.B[sOff + k + 1]!;
+                        probs[k + 2] += prob * this.B[sOff + k + 2]!;
+                        probs[k + 3] += prob * this.B[sOff + k + 3]!;
+                        probs[k + 4] += prob * this.B[sOff + k + 4]!;
+                        probs[k + 5] += prob * this.B[sOff + k + 5]!;
+                        probs[k + 6] += prob * this.B[sOff + k + 6]!;
+                        probs[k + 7] += prob * this.B[sOff + k + 7]!;
+                    }
+                    for (; k < M; k++) {
                         probs[k] += prob * this.B[sOff + k]!;
                     }
                 }
