@@ -15,9 +15,14 @@ import RandomPool from "./random-pool";
  * - Observations (Emissions): The composite outcome (Slot Index * 3 + Payout Bucket).
  *
  * Performance Optimizations:
- * - Uses object pooling for memory management to reduce GC pressure
- * - Transposed transition matrix (At) improves cache locality in forward/backward algorithms
- * - Scaling/normalization prevents numerical underflow during probability calculations
+ * - Buffer Pooling: Reuses Float64Array buffers to minimize GC pressure during training.
+ * - Emission Caching: Pre-calculates P(O_t | S_i) matrix to eliminate redundant O(N*T) index math.
+ * - Vectorized Unrolling: Uses loop unrolling (4x-8x) in dot products for better CPU pipeline utilization.
+ * - Transposed Transitions: Uses a transposed transition matrix (At) for sequential memory access (cache locality).
+ *
+ * Accuracy Optimizations:
+ * - Windowed Seeding: Initializes hidden states with local data "regimes" to improve specialization.
+ * - Multiple Restarts: Runs EM from different starting points to avoid local optima.
  */
 
 const rng = new RandomPool();
@@ -102,16 +107,18 @@ export class HMM {
     }
 
     /**
-     * Seeding: Intelligently initializes the emission matrix (B) based on global data.
+     * Seeding: Intelligently initializes the emission matrix (B) based on data.
      *
      * To accelerate convergence and prevent the EM algorithm from getting stuck in
-     * poor local optima, we seed each hidden state with the global observation
-     * frequencies, perturbed by random noise. This ensures:
-     * 1. Each state begins with a realistic (though non-specific) emission distribution.
-     * 2. Every state starts slightly differently, allowing the EM algorithm to
-     *    specialize them into different clusters/regimes during training.
+     * poor local optima, we seed hidden states by blending:
+     * 1. Local Regimes: Each state is assigned a random temporal window of observations
+     *    to capture specific local patterns (e.g., a "high-payout streak").
+     * 2. Global Priors: Blends in the overall observation frequencies to ensure every
+     *    state has a realistic baseline and handles missing outcomes.
+     * 3. Diversity Noise: Perturbs the distribution to ensure workers in an ensemble
+     *    explore different parts of the parameter space.
      *
-     * @param observations - Representative data used to calculate global frequencies.
+     * @param observations - Representative data used to calculate frequencies.
      */
     public initializeFromData(observations: number[] | Int32Array) {
         const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
@@ -258,6 +265,12 @@ export class HMM {
     /**
      * Performs a single session of Baum-Welch (EM) optimization.
      *
+     * This implementation is optimized for high performance:
+     * 1. Pre-calculates emission probabilities for the current model in each iteration.
+     * 2. Uses optimized forward and backward passes with 4x loop unrolling.
+     * 3. Consolidates statistics accumulation to minimize passes over data.
+     * 4. Caches joint probability components (rowDots) to avoid redundant O(N^2) dot products.
+     *
      * @param observations - The sequence of observed results.
      * @param iterations - Maximum number of EM iterations (epochs).
      * @param tolerance - Log-likelihood improvement threshold for early stopping.
@@ -288,7 +301,8 @@ export class HMM {
             this.updateTransposedA();
 
             for (let iter = 0; iter < iterations; iter++) {
-                // 0. Pre-calculate emission probabilities for this iteration
+                // 0. Pre-calculate emission probabilities for this iteration.
+                // This avoids re-calculating B[i][ot] indices in forward, backward, and accumulation.
                 for (let t = 0; t < T; t++) {
                     const ot = obs[t]!;
                     const tOff = t * N;
@@ -338,13 +352,14 @@ export class HMM {
                         bBeta[j] = emitProbs[ntOff + j]! * beta[ntOff + j]!;
                     }
 
-                    // Compute jointDenom and cache rowDots
+                    // Compute jointDenom and cache row-wise dot products (rowDots).
+                    // This optimization avoids re-calculating the inner dot product for xi accumulation.
                     let jointDenom = 0;
                     for (let i = 0; i < N; i++) {
                         const iOff = i * N;
                         let dot = 0;
                         let j = 0;
-                        // Unroll by 2 for N=6 compatibility
+                        // Unroll by 2 to balance N=6/8 constraints
                         const limit = N - (N % 2);
                         for (; j < limit; j += 2) {
                             dot += this.A[iOff + j]! * bBeta[j]! +
@@ -364,6 +379,7 @@ export class HMM {
                         const iOff = i * N;
                         const alphaScaled = alphaVal * invJointDenom;
 
+                        // Accumulate transition stats (xi)
                         let j = 0;
                         const limit = N - (N % 2);
                         for (; j < limit; j += 2) {
@@ -374,7 +390,7 @@ export class HMM {
                             accumA[iOff + j]! += alphaScaled * this.A[iOff + j]! * bBeta[j]!;
                         }
 
-                        // gamma_ti = P(state_t = i | O, model) = alpha_t(i) * sum_j(A(i,j)*B*beta) / jointDenom
+                        // gamma_ti = P(state_t = i | O, model) = alpha_t(i) * sum_j(A*B*beta) / jointDenom
                         const gamma_ti = alphaVal * rowDots[i]! * invJointDenom;
                         if (t === 0) this.pi[i] = gamma_ti;
 
@@ -453,6 +469,17 @@ export class HMM {
 
     /**
      * Optimized forward pass using cached emission probabilities and unrolling.
+     *
+     * Numerical Stability:
+     * Standard HMM calculations involve repeated multiplication of probabilities,
+     * leading to geometric decay and floating-point underflow. We normalize the
+     * alpha vector at each timestep such that sum(alpha_t) = 1.0. The sum of the
+     * logs of these scaling factors yields the total log-likelihood.
+     *
+     * @param obs - The observation sequence.
+     * @param alpha - Buffer to store forward variables.
+     * @param emitProbs - Pre-calculated emission probability matrix (T x N).
+     * @returns Total log-likelihood of the observation sequence.
      */
     private computeForwardOptimized(obs: Int32Array, alpha: Float64Array, emitProbs: Float64Array): number {
         const T = obs.length;
@@ -512,6 +539,14 @@ export class HMM {
 
     /**
      * Optimized backward pass using cached emission probabilities and unrolling.
+     *
+     * Like computeForward, beta is scaled at each timestep. Using the same
+     * scaling logic ensures that alpha[t][i] * beta[t][i] remains proportional
+     * to the posterior probability of being in state i at time t.
+     *
+     * @param obs - The observation sequence.
+     * @param beta - Buffer to store backward variables.
+     * @param emitProbs - Pre-calculated emission probability matrix (T x N).
      */
     private computeBackwardOptimized(obs: Int32Array, beta: Float64Array, emitProbs: Float64Array) {
         const T = obs.length;
@@ -571,8 +606,8 @@ export class HMM {
      * Efficiently predicts probabilities for future observations.
      *
      * Implementation:
-     * 1. Filtering: Runs the Forward Algorithm to find the posterior state distribution
-     *    given all known observations O_1...O_T.
+     * 1. Filtering: Runs the Optimized Forward Algorithm to find the posterior state
+     *    distribution given all known observations O_1...O_T.
      * 2. State Projection: Iteratively projects the distribution into the future using
      *    the transition matrix A (Markov property).
      * 3. Emission Projection: At each future step, projects the state distribution
