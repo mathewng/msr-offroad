@@ -202,6 +202,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
                 numStates: config.hmmStates,
                 numObservations: config.hmmObservations,
                 iterations: config.trainingIterations,
+                restarts: config.trainingRestarts,
                 tolerance: config.convergenceTolerance,
                 smoothing: config.hmmSmoothing,
                 steps: chunk.length,
@@ -296,6 +297,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
  * --relative-threshold=<val>: Secondary threshold relative to the top choice.
  * --hmm-smoothing=<val>: Laplace smoothing constant for HMM re-estimation.
  * --chunk-size=<val>: How many races to process before HMM retraining.
+ * --restarts=<val>: Number of HMM training sessions per model.
  * --print-config-only: Calculate empirical win rates and exit after printing the config.
  */
 function parseArgs() {
@@ -385,6 +387,14 @@ function parseArgs() {
         const chunkSize = parseInt(chunkSizeMatch.split("=")[1]!, 10);
         if (!isNaN(chunkSize) && chunkSize > 0) {
             config = { ...config, chunkSize: chunkSize };
+        }
+    }
+
+    const restartsMatch = args.find((a) => a.startsWith("--restarts="));
+    if (restartsMatch && restartsMatch.includes("=") && restartsMatch.split("=")[1]!.trim() !== "") {
+        const restarts = parseInt(restartsMatch.split("=")[1]!, 10);
+        if (!isNaN(restarts) && restarts > 0) {
+            config = { ...config, trainingRestarts: restarts };
         }
     }
 

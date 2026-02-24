@@ -12,6 +12,9 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     // Maximum iterations for the Baum-Welch training algorithm.
     trainingIterations: 10_000,
 
+    // Number of HMM training sessions with different initializations per model.
+    trainingRestarts: 3,
+
     // Convergence cutoff for training. Smaller values yield more precise fits but take longer.
     convergenceTolerance: 5e-3,
 

@@ -174,17 +174,70 @@ export class HMM {
     }
 
     /**
-     * Trains the model using the Baum-Welch (EM) algorithm.
+     * High-level training method that supports multiple restarts.
+     *
+     * HMM training (Baum-Welch) is a local optimization process sensitive to
+     * initial parameters. Running multiple training sessions with different
+     * initializations and selecting the one with the highest log-likelihood
+     * significantly improves the quality of the final model.
+     *
+     * @param observations - The sequence of observed results.
+     * @param iterations - Maximum number of EM iterations (epochs) per restart.
+     * @param restarts - Number of full training sessions to attempt (default: 3).
+     * @param tolerance - Log-likelihood improvement threshold for early stopping.
+     * @param smoothing - Laplace smoothing constant (pseudocount).
+     * @returns The final log-likelihood of the best model found.
+     */
+    public train(observations: number[] | Int32Array, iterations: number = 100, restarts: number = 3, tolerance: number = 0, smoothing: number = 1e-6): number {
+        const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
+
+        let bestLogLikelihood = -Infinity;
+        const bestA = new Float64Array(this.A.length);
+        const bestB = new Float64Array(this.B.length);
+        const bestPi = new Float64Array(this.pi.length);
+
+        for (let r = 0; r < restarts; r++) {
+            // 1. Initialize parameters for this restart
+            if (r > 0) {
+                // If we've already initialized from data once, reuse that logic but
+                // it will generate different random perturbations for each restart.
+                this.initializeFromData(obs);
+            }
+
+            // 2. Perform EM optimization (one session)
+            const ll = this.fit(obs, iterations, tolerance, smoothing);
+
+            // 3. Keep the best model parameters
+            if (ll > bestLogLikelihood) {
+                bestLogLikelihood = ll;
+                bestA.set(this.A);
+                bestB.set(this.B);
+                bestPi.set(this.pi);
+            }
+        }
+
+        // Restore the best found model
+        this.A.set(bestA);
+        this.B.set(bestB);
+        this.pi.set(bestPi);
+        this.updateTransposedA();
+
+        return bestLogLikelihood;
+    }
+
+    /**
+     * Performs a single session of Baum-Welch (EM) optimization.
      *
      * @param observations - The sequence of observed results.
      * @param iterations - Maximum number of EM iterations (epochs).
      * @param tolerance - Log-likelihood improvement threshold for early stopping.
-     * @param smoothing - Laplace smoothing constant (pseudocount) to prevent zero probabilities and improve generalization.
+     * @param smoothing - Laplace smoothing constant (pseudocount).
+     * @returns Final log-likelihood of the sequence given the trained parameters.
      */
-    public train(observations: number[] | Int32Array, iterations: number = 100, tolerance: number = 0, smoothing: number = 1e-6) {
-        const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
+    private fit(observations: Int32Array, iterations: number, tolerance: number, smoothing: number): number {
+        const obs = observations;
         const T = obs.length;
-        if (T < 2) return;
+        if (T < 2) return -Infinity;
 
         const N = this.numStates;
         const M = this.numObservations;
@@ -197,6 +250,8 @@ export class HMM {
         const denomA = BufferPool.get(N);
         const denomB = BufferPool.get(N);
 
+        let finalLogLikelihood = -Infinity;
+
         try {
             let oldLogLikelihood = -Infinity;
             this.updateTransposedA();
@@ -207,7 +262,8 @@ export class HMM {
                 const logLikelihood = this.computeForward(obs, alpha);
 
                 // Likelihood became zero or invalid (numerical failure)
-                if (logLikelihood === -Infinity) break;
+                if (logLikelihood === -Infinity) return -Infinity;
+                finalLogLikelihood = logLikelihood;
 
                 // Convergence Check: Stop if the log-likelihood improvement is below threshold
                 if (tolerance > 0 && iter > 0) {
@@ -331,6 +387,8 @@ export class HMM {
             BufferPool.release(denomA);
             BufferPool.release(denomB);
         }
+
+        return finalLogLikelihood;
     }
 
     /**
@@ -386,13 +444,13 @@ export class HMM {
                 const limit = N - (N % 8);
                 for (; i < limit; i += 8) {
                     sum += alpha[ptOff + i]! * this.At[jOff + i]! +
-                           alpha[ptOff + i + 1]! * this.At[jOff + i + 1]! +
-                           alpha[ptOff + i + 2]! * this.At[jOff + i + 2]! +
-                           alpha[ptOff + i + 3]! * this.At[jOff + i + 3]! +
-                           alpha[ptOff + i + 4]! * this.At[jOff + i + 4]! +
-                           alpha[ptOff + i + 5]! * this.At[jOff + i + 5]! +
-                           alpha[ptOff + i + 6]! * this.At[jOff + i + 6]! +
-                           alpha[ptOff + i + 7]! * this.At[jOff + i + 7]!;
+                        alpha[ptOff + i + 1]! * this.At[jOff + i + 1]! +
+                        alpha[ptOff + i + 2]! * this.At[jOff + i + 2]! +
+                        alpha[ptOff + i + 3]! * this.At[jOff + i + 3]! +
+                        alpha[ptOff + i + 4]! * this.At[jOff + i + 4]! +
+                        alpha[ptOff + i + 5]! * this.At[jOff + i + 5]! +
+                        alpha[ptOff + i + 6]! * this.At[jOff + i + 6]! +
+                        alpha[ptOff + i + 7]! * this.At[jOff + i + 7]!;
                 }
                 for (; i < N; i++) {
                     sum += alpha[ptOff + i]! * this.At[jOff + i]!;
@@ -459,13 +517,13 @@ export class HMM {
                     const limit = N - (N % 8);
                     for (; j < limit; j += 8) {
                         sum += this.A[iOff + j]! * bBeta[j]! +
-                               this.A[iOff + j + 1]! * bBeta[j + 1]! +
-                               this.A[iOff + j + 2]! * bBeta[j + 2]! +
-                               this.A[iOff + j + 3]! * bBeta[j + 3]! +
-                               this.A[iOff + j + 4]! * bBeta[j + 4]! +
-                               this.A[iOff + j + 5]! * bBeta[j + 5]! +
-                               this.A[iOff + j + 6]! * bBeta[j + 6]! +
-                               this.A[iOff + j + 7]! * bBeta[j + 7]!;
+                            this.A[iOff + j + 1]! * bBeta[j + 1]! +
+                            this.A[iOff + j + 2]! * bBeta[j + 2]! +
+                            this.A[iOff + j + 3]! * bBeta[j + 3]! +
+                            this.A[iOff + j + 4]! * bBeta[j + 4]! +
+                            this.A[iOff + j + 5]! * bBeta[j + 5]! +
+                            this.A[iOff + j + 6]! * bBeta[j + 6]! +
+                            this.A[iOff + j + 7]! * bBeta[j + 7]!;
                     }
                     for (; j < N; j++) {
                         sum += this.A[iOff + j]! * bBeta[j]!;
@@ -553,13 +611,13 @@ export class HMM {
                     const limit = N - (N % 8);
                     for (; i < limit; i += 8) {
                         sum += stateDistribution[i]! * this.At[jOff + i]! +
-                               stateDistribution[i + 1]! * this.At[jOff + i + 1]! +
-                               stateDistribution[i + 2]! * this.At[jOff + i + 2]! +
-                               stateDistribution[i + 3]! * this.At[jOff + i + 3]! +
-                               stateDistribution[i + 4]! * this.At[jOff + i + 4]! +
-                               stateDistribution[i + 5]! * this.At[jOff + i + 5]! +
-                               stateDistribution[i + 6]! * this.At[jOff + i + 6]! +
-                               stateDistribution[i + 7]! * this.At[jOff + i + 7]!;
+                            stateDistribution[i + 1]! * this.At[jOff + i + 1]! +
+                            stateDistribution[i + 2]! * this.At[jOff + i + 2]! +
+                            stateDistribution[i + 3]! * this.At[jOff + i + 3]! +
+                            stateDistribution[i + 4]! * this.At[jOff + i + 4]! +
+                            stateDistribution[i + 5]! * this.At[jOff + i + 5]! +
+                            stateDistribution[i + 6]! * this.At[jOff + i + 6]! +
+                            stateDistribution[i + 7]! * this.At[jOff + i + 7]!;
                     }
                     for (; i < N; i++) {
                         sum += stateDistribution[i]! * this.At[jOff + i]!;
@@ -573,7 +631,7 @@ export class HMM {
                 for (let state = 0; state < N; state++) {
                     const prob = stateDistribution[state]!;
                     const sOff = state * M;
-                    
+
                     let k = 0;
                     const mLimit = M - (M % 8);
                     for (; k < mLimit; k += 8) {
