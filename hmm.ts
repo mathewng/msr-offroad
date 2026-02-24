@@ -804,9 +804,12 @@ export class HMM {
         }
         path[T - 1] = lastState;
 
-        // 4. Backtracking
+        // 4. Backtracking: Trace back through the psi matrix to find the
+        // sequence of states that most likely produced the observations.
         for (let t = T - 2; t >= 0; t--) {
-            path[t] = psi[(t + 1) * N + path[t + 1]!];
+            // Using non-null assertion because (t+1)*N + path[t+1] is guaranteed
+            // to be within the bounds of the psi matrix by the algorithm's construction.
+            path[t] = psi[(t + 1) * N + path[t + 1]!]!;
         }
 
         BufferPool.release(delta);

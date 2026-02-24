@@ -51,11 +51,14 @@ export function predictRace(currentRace: Race, stats: StatsResult, aggregatedPro
         // Fallback to the empirical prior from config for this slot if no bucket-specific data exists
         let winRate = bStat?.winRate ?? config.empiricalWinRates?.[slot] ?? EQUAL_SLOT_PROBABILITY;
 
-        // Blend in Venue context (20% weight) if we have enough samples
+        // Blend in Venue context (20% weight) if we have enough samples.
+        // A low threshold (2) is used to allow the model to start adapting to venue-specific
+        // trends as soon as they emerge in the walk-forward window.
         if (vStat && vStat.occurrences >= 2) {
             winRate = winRate * 0.8 + vStat.winRate * 0.2;
         }
-        // Blend in Round context (15% weight) if we have enough samples
+        // Blend in Round context (15% weight) if we have enough samples.
+        // Similar to venue, a threshold of 2 captures early round-specific momentum.
         if (rStat && rStat.occurrences >= 2) {
             winRate = winRate * 0.85 + rStat.winRate * 0.15;
         }

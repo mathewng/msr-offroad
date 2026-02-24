@@ -55,7 +55,8 @@ export function parseLines(lines: string[]): Race[] {
 
             const winningIndex = winIndicators.findIndex((n) => n === 1);
             const winningSlot = winningIndex !== -1 ? winningIndex + 1 : null;
-            const winningPayout = winningSlot !== null ? payouts[winningIndex - 1 + 1] : null;
+            // The winning payout is the value in the payouts array at the same index as the winning indicator
+            const winningPayout = winningIndex !== -1 ? payouts[winningIndex] : null;
 
             races.push({
                 day: currentDay,
@@ -79,6 +80,11 @@ export function parseLines(lines: string[]): Race[] {
  * and Bucket 2 represents a "weak" (high payout) version, regardless of overlapping global ranges.
  */
 export function getPayoutBucket(payout: number, slot: number): number {
+    // These thresholds (5.5, 9.6) are derived from empirical analysis of the historical
+    // dataset to categorize payouts into roughly equal-frequency buckets:
+    // Bucket 0 (<= 5.5): Favored / Strong lane
+    // Bucket 1 (5.6 - 9.6): Neutral / Mid-range
+    // Bucket 2 (> 9.6): Longshot / Weak lane
     const [low, high] = [5.5, 9.6];
 
     if (payout <= low) return 0;

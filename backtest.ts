@@ -207,11 +207,13 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
                 restarts: config.trainingRestarts,
                 tolerance: config.convergenceTolerance,
                 smoothing: config.hmmSmoothing,
-                steps: chunk.length,
+                steps: chunk.length, // Predict probabilities for the exact number of races in the upcoming chunk
             }),
         );
 
         const allEnsemblePredictions = await Promise.all(ensemblePromises);
+        // Pre-calculate the inverse of the ensemble size to replace division with multiplication
+        // in the inner aggregation loop (performance optimization).
         const invEnsembleSize = 1.0 / config.ensembleSize;
 
         // Determine the consensus "Regime" (most likely hidden state) for the current historical state.
