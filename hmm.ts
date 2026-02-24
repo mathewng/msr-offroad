@@ -115,41 +115,71 @@ export class HMM {
      */
     public initializeFromData(observations: number[] | Int32Array) {
         const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
-        const frequencies = new Float64Array(this.numObservations);
-        let totalCount = 0;
+        const T = obs.length;
+        if (T === 0) return;
 
-        // Calculate global observation frequency (Prior probability)
-        for (let t = 0; t < obs.length; t++) {
+        const N = this.numStates;
+        const M = this.numObservations;
+
+        // 1. Calculate global frequencies as a baseline fallback
+        const globalFreqs = new Float64Array(M);
+        let validCount = 0;
+        for (let t = 0; t < T; t++) {
             const o = obs[t]!;
             if (o !== -1) {
-                frequencies[o]!++;
-                totalCount++;
+                globalFreqs[o]!++;
+                validCount++;
             }
         }
+        if (validCount > 0) {
+            const invValid = 1.0 / validCount;
+            for (let k = 0; k < M; k++) globalFreqs[k]! *= invValid;
+        } else {
+            globalFreqs.fill(1.0 / M);
+        }
 
-        if (totalCount === 0) return;
+        // 2. Seed each state with windowed frequencies for better specialization
+        // Window size is chosen to be representative of local "regimes"
+        const windowSize = Math.max(10, Math.floor(T / (N * 2)));
 
-        // Normalize frequencies
-        const invTotal = 1.0 / totalCount;
-        for (let k = 0; k < this.numObservations; k++) frequencies[k]! *= invTotal;
+        for (let i = 0; i < N; i++) {
+            const offset = i * M;
+            const stateFreqs = new Float64Array(M);
+            let stateTotal = 0;
 
-        // Seed each state's emission matrix (B) with randomized frequencies
-        for (let i = 0; i < this.numStates; i++) {
-            const offset = i * this.numObservations;
+            // Pick a random starting point for this state's window
+            const start = Math.floor(rng.next() * Math.max(1, T - windowSize));
+            const end = Math.min(T, start + windowSize);
+
+            // Accumulate frequencies in the window
+            for (let t = start; t < end; t++) {
+                const o = obs[t]!;
+                if (o !== -1) {
+                    stateFreqs[o]!++;
+                    stateTotal++;
+                }
+            }
+
             let rowSum = 0;
+            const eps = 1e-10;
 
-            for (let k = 0; k < this.numObservations; k++) {
-                // Perturb the global frequency by 50-100% per observation per state
-                // This ensures each worker starts with a unique view of the clusters
-                const randomShift = 0.5 + rng.next(); // 0.5 to 1.5
-                const val = (frequencies[k]! * randomShift) + 1e-10;
+            for (let k = 0; k < M; k++) {
+                // Blend: 70% local window, 30% global frequencies + noise
+                // This gives each state a "hint" of a specific regime while keeping it open
+                let val = globalFreqs[k]! * 0.3;
+                if (stateTotal > 0) {
+                    val += (stateFreqs[k]! / stateTotal) * 0.7;
+                }
+
+                // Add diversity noise to ensure even identical windows lead to different specialization
+                val = (val * (0.8 + rng.next() * 0.4)) + eps;
                 this.B[offset + k] = val;
                 rowSum += val;
             }
 
-            // Normalize the row (sum P(O|S) = 1.0)
+            // Normalize
             const invRowSum = 1.0 / rowSum;
-            for (let k = 0; k < this.numObservations; k++) {
+            for (let k = 0; k < M; k++) {
                 this.B[offset + k]! *= invRowSum;
             }
         }
@@ -245,6 +275,7 @@ export class HMM {
         // Use buffer pool to avoid garbage collection overhead
         const alpha = BufferPool.get(T * N);
         const beta = BufferPool.get(T * N);
+        const emitProbs = BufferPool.get(T * N); // Cache P(O_t | S_i)
         const accumA = BufferPool.get(N * N);
         const accumB = BufferPool.get(N * M);
         const denomA = BufferPool.get(N);
@@ -257,9 +288,21 @@ export class HMM {
             this.updateTransposedA();
 
             for (let iter = 0; iter < iterations; iter++) {
+                // 0. Pre-calculate emission probabilities for this iteration
+                for (let t = 0; t < T; t++) {
+                    const ot = obs[t]!;
+                    const tOff = t * N;
+                    if (ot === -1) {
+                        for (let i = 0; i < N; i++) emitProbs[tOff + i] = 1.0;
+                    } else {
+                        for (let i = 0; i < N; i++) {
+                            emitProbs[tOff + i] = this.B[i * M + ot]!;
+                        }
+                    }
+                }
+
                 // 1. E-Step Part A: Forward Pass (compute alpha)
-                // alpha[t][i] = P(O_1...O_t, state_t = i | model)
-                const logLikelihood = this.computeForward(obs, alpha);
+                const logLikelihood = this.computeForwardOptimized(obs, alpha, emitProbs);
 
                 // Likelihood became zero or invalid (numerical failure)
                 if (logLikelihood === -Infinity) return -Infinity;
@@ -274,53 +317,67 @@ export class HMM {
                 oldLogLikelihood = logLikelihood;
 
                 // 2. E-Step Part B: Backward Pass (compute beta)
-                // beta[t][i] = P(O_t+1...O_T | state_t = i, model)
-                this.computeBackward(obs, beta);
+                this.computeBackwardOptimized(obs, beta, emitProbs);
 
                 // 3. E-Step Part C: Accumulation of Statistics
-                // We calculate expectations of transitions (xi) and state occupancies (gamma)
-                // without allocating massive O(T*N*N) buffers by accumulating on-the-fly.
                 accumA.fill(0);
                 accumB.fill(0);
                 denomA.fill(0);
                 denomB.fill(0);
 
+                const bBeta = BufferPool.get(N);
+                const rowDots = BufferPool.get(N);
+
                 for (let t = 0; t < T - 1; t++) {
                     const tOff = t * N;
                     const ntOff = (t + 1) * N;
                     const oCurr = obs[t]!;
-                    const oNext = obs[t + 1]!;
 
-                    // Compute normalization factor (joint probability P(O | model)) for this timestep
+                    // Use cached emission probabilities for t+1
+                    for (let j = 0; j < N; j++) {
+                        bBeta[j] = emitProbs[ntOff + j]! * beta[ntOff + j]!;
+                    }
+
+                    // Compute jointDenom and cache rowDots
                     let jointDenom = 0;
                     for (let i = 0; i < N; i++) {
-                        const alphaVal = alpha[tOff + i]!;
                         const iOff = i * N;
-                        for (let j = 0; j < N; j++) {
-                            const emissionProb = oNext === -1 ? 1.0 : this.B[j * M + oNext]!;
-                            jointDenom += alphaVal * this.A[iOff + j]! * emissionProb * beta[ntOff + j]!;
+                        let dot = 0;
+                        let j = 0;
+                        // Unroll by 2 for N=6 compatibility
+                        const limit = N - (N % 2);
+                        for (; j < limit; j += 2) {
+                            dot += this.A[iOff + j]! * bBeta[j]! +
+                                this.A[iOff + j + 1]! * bBeta[j + 1]!;
                         }
+                        for (; j < N; j++) dot += this.A[iOff + j]! * bBeta[j]!;
+
+                        rowDots[i] = dot;
+                        jointDenom += alpha[tOff + i]! * dot;
                     }
+
                     const invJointDenom = jointDenom === 0 ? 1e20 : 1.0 / jointDenom;
 
-                    // Accumulate transition counts (A) and emission counts (B)
+                    // Accumulate expectations
                     for (let i = 0; i < N; i++) {
                         const alphaVal = alpha[tOff + i]!;
                         const iOff = i * N;
-                        let gamma_ti = 0; // P(state_t = i | O, model)
+                        const alphaScaled = alphaVal * invJointDenom;
 
-                        for (let j = 0; j < N; j++) {
-                            const emissionProb = oNext === -1 ? 1.0 : this.B[j * M + oNext]!;
-                            // xi_tij = P(state_t = i, state_t+1 = j | O, model)
-                            const xi_tij = alphaVal * this.A[iOff + j]! * emissionProb * beta[ntOff + j]! * invJointDenom;
-                            accumA[iOff + j]! += xi_tij;
-                            gamma_ti += xi_tij;
+                        let j = 0;
+                        const limit = N - (N % 2);
+                        for (; j < limit; j += 2) {
+                            accumA[iOff + j]! += alphaScaled * this.A[iOff + j]! * bBeta[j]!;
+                            accumA[iOff + j + 1]! += alphaScaled * this.A[iOff + j + 1]! * bBeta[j + 1]!;
+                        }
+                        for (; j < N; j++) {
+                            accumA[iOff + j]! += alphaScaled * this.A[iOff + j]! * bBeta[j]!;
                         }
 
-                        // Pi re-estimation (initial state distribution)
+                        // gamma_ti = P(state_t = i | O, model) = alpha_t(i) * sum_j(A(i,j)*B*beta) / jointDenom
+                        const gamma_ti = alphaVal * rowDots[i]! * invJointDenom;
                         if (t === 0) this.pi[i] = gamma_ti;
 
-                        // Accumulate for transition denominator and emission numerator/denominator
                         denomA[i]! += gamma_ti;
                         if (oCurr !== -1) {
                             accumB[i * M + oCurr]! += gamma_ti;
@@ -328,6 +385,8 @@ export class HMM {
                         }
                     }
                 }
+                BufferPool.release(bBeta);
+                BufferPool.release(rowDots);
 
                 // Handle the terminal state (T-1) for gamma accumulation
                 const lastOff = (T - 1) * N;
@@ -382,6 +441,7 @@ export class HMM {
             // Return buffers to pool for reuse
             BufferPool.release(alpha);
             BufferPool.release(beta);
+            BufferPool.release(emitProbs);
             BufferPool.release(accumA);
             BufferPool.release(accumB);
             BufferPool.release(denomA);
@@ -392,38 +452,23 @@ export class HMM {
     }
 
     /**
-     * Calculates alpha (forward variables): probability of partial sequence O1..Ot
-     * ending in state i.
-     *
-     * Numerical Stability:
-     * Standard HMM calculations involve repeated multiplication of probabilities,
-     * leading to geometric decay and floating-point underflow (values becoming 0).
-     * We solve this by normalizing the alpha vector at each timestep 't' such that
-     * sum(alpha_t) = 1.0. The log of each scaling factor is summed to yield the
-     * total log-likelihood of the observation sequence.
-     *
-     * @returns Total log-likelihood of the observations.
+     * Optimized forward pass using cached emission probabilities and unrolling.
      */
-    private computeForward(obs: Int32Array, alpha: Float64Array): number {
+    private computeForwardOptimized(obs: Int32Array, alpha: Float64Array, emitProbs: Float64Array): number {
         const T = obs.length;
         const N = this.numStates;
-        const M = this.numObservations;
         let logLikelihood = 0;
 
         // Initialization Step (t=0)
-        const o0 = obs[0]!;
         let rowSum0 = 0;
         for (let i = 0; i < N; i++) {
-            // Missing observation (-1) handling: P(O|S) = 1.0
-            const emissionProb = o0 === -1 ? 1.0 : this.B[i * M + o0]!;
-            const val = this.pi[i]! * emissionProb;
+            const val = this.pi[i]! * emitProbs[i]!;
             alpha[i] = val;
             rowSum0 += val;
         }
 
-        if (rowSum0 <= 0) return -Infinity; // Impossible sequence
+        if (rowSum0 <= 0) return -Infinity;
 
-        // Scale alpha_0 and record log-scaling factor
         const invRowSum0 = 1.0 / rowSum0;
         for (let i = 0; i < N; i++) alpha[i]! *= invRowSum0;
         logLikelihood += Math.log(rowSum0);
@@ -432,38 +477,32 @@ export class HMM {
         for (let t = 1; t < T; t++) {
             const tOff = t * N;
             const ptOff = (t - 1) * N;
-            const ot = obs[t]!;
             let rowSum = 0;
 
             for (let j = 0; j < N; j++) {
                 let sum = 0;
                 const jOff = j * N;
-                // Cache-friendly: At is transposed, so we access sequentially [j*N + i]
-                // which corresponds to A[i][j]. This improves SIMD and cache locality.
+
                 let i = 0;
-                const limit = N - (N % 8);
-                for (; i < limit; i += 8) {
+                // Unroll by 4 for better pipeline utilization
+                const limit4 = N - (N % 4);
+                for (; i < limit4; i += 4) {
                     sum += alpha[ptOff + i]! * this.At[jOff + i]! +
                         alpha[ptOff + i + 1]! * this.At[jOff + i + 1]! +
                         alpha[ptOff + i + 2]! * this.At[jOff + i + 2]! +
-                        alpha[ptOff + i + 3]! * this.At[jOff + i + 3]! +
-                        alpha[ptOff + i + 4]! * this.At[jOff + i + 4]! +
-                        alpha[ptOff + i + 5]! * this.At[jOff + i + 5]! +
-                        alpha[ptOff + i + 6]! * this.At[jOff + i + 6]! +
-                        alpha[ptOff + i + 7]! * this.At[jOff + i + 7]!;
+                        alpha[ptOff + i + 3]! * this.At[jOff + i + 3]!;
                 }
                 for (; i < N; i++) {
                     sum += alpha[ptOff + i]! * this.At[jOff + i]!;
                 }
-                const emissionProb = ot === -1 ? 1.0 : this.B[j * M + ot]!;
-                const val = sum * emissionProb;
+
+                const val = sum * emitProbs[tOff + j]!;
                 alpha[tOff + j] = val;
                 rowSum += val;
             }
 
             if (rowSum <= 0) return -Infinity;
 
-            // Scale alpha_t and record log-scaling factor
             const invRowSum = 1.0 / rowSum;
             for (let i = 0; i < N; i++) alpha[tOff + i]! *= invRowSum;
             logLikelihood += Math.log(rowSum);
@@ -472,58 +511,37 @@ export class HMM {
     }
 
     /**
-     * Calculates beta (backward variables): probability of partial sequence Ot+1..OT
-     * given state i at time t.
-     *
-     * Numerical Stability:
-     * Like computeForward, beta is scaled at each timestep. While beta doesn't
-     * directly yield log-likelihood, using the same scaling factors as alpha
-     * ensures that alpha[t][i] * beta[t][i] remains proportional to the
-     * posterior probability of being in state i at time t.
+     * Optimized backward pass using cached emission probabilities and unrolling.
      */
-    private computeBackward(obs: Int32Array, beta: Float64Array) {
+    private computeBackwardOptimized(obs: Int32Array, beta: Float64Array, emitProbs: Float64Array) {
         const T = obs.length;
         const N = this.numStates;
-        const M = this.numObservations;
 
-        // Initialization Step (t=T-1)
         const lastOff = (T - 1) * N;
         for (let i = 0; i < N; i++) beta[lastOff + i] = 1;
 
         const bBeta = BufferPool.get(N);
         try {
-            // Induction Step (t < T-1)
             for (let t = T - 2; t >= 0; t--) {
                 const tOff = t * N;
                 const ntOff = (t + 1) * N;
-                const onext = obs[t + 1]!;
                 let rowSum = 0;
 
-                // Pre-calculate the emission-scaled beta for this time step
-                if (onext === -1) {
-                    for (let j = 0; j < N; j++) bBeta[j] = beta[ntOff + j]!;
-                } else {
-                    for (let j = 0; j < N; j++) {
-                        bBeta[j] = this.B[j * M + onext]! * beta[ntOff + j]!;
-                    }
+                for (let j = 0; j < N; j++) {
+                    bBeta[j] = emitProbs[ntOff + j]! * beta[ntOff + j]!;
                 }
 
                 for (let i = 0; i < N; i++) {
                     let sum = 0;
                     const iOff = i * N;
 
-                    // Vectorized/Unrolled dot product: sum += A[i] * (B * beta[t+1])
                     let j = 0;
-                    const limit = N - (N % 8);
-                    for (; j < limit; j += 8) {
+                    const limit4 = N - (N % 4);
+                    for (; j < limit4; j += 4) {
                         sum += this.A[iOff + j]! * bBeta[j]! +
                             this.A[iOff + j + 1]! * bBeta[j + 1]! +
                             this.A[iOff + j + 2]! * bBeta[j + 2]! +
-                            this.A[iOff + j + 3]! * bBeta[j + 3]! +
-                            this.A[iOff + j + 4]! * bBeta[j + 4]! +
-                            this.A[iOff + j + 5]! * bBeta[j + 5]! +
-                            this.A[iOff + j + 6]! * bBeta[j + 6]! +
-                            this.A[iOff + j + 7]! * bBeta[j + 7]!;
+                            this.A[iOff + j + 3]! * bBeta[j + 3]!;
                     }
                     for (; j < N; j++) {
                         sum += this.A[iOff + j]! * bBeta[j]!;
@@ -533,7 +551,6 @@ export class HMM {
                     rowSum += sum;
                 }
 
-                // Normalization to maintain parity with forward scaling
                 if (rowSum === 0) rowSum = 1e-20;
                 const invRowSum = 1.0 / rowSum;
                 for (let i = 0; i < N; i++) beta[tOff + i]! *= invRowSum;
@@ -578,9 +595,23 @@ export class HMM {
             } else {
                 const T = obs.length;
                 const alpha = BufferPool.get(T * N);
+                const emitProbs = BufferPool.get(T * N);
                 try {
+                    // Populate emitProbs for the forward pass
+                    for (let t = 0; t < T; t++) {
+                        const ot = obs[t]!;
+                        const tOff = t * N;
+                        if (ot === -1) {
+                            for (let i = 0; i < N; i++) emitProbs[tOff + i] = 1.0;
+                        } else {
+                            for (let i = 0; i < N; i++) {
+                                emitProbs[tOff + i] = this.B[i * M + ot]!;
+                            }
+                        }
+                    }
+
                     this.updateTransposedA();
-                    this.computeForward(obs, alpha);
+                    this.computeForwardOptimized(obs, alpha, emitProbs);
 
                     const lastOff = (T - 1) * N;
                     stateDistribution.set(alpha.subarray(lastOff, lastOff + N));
@@ -595,6 +626,7 @@ export class HMM {
                     }
                 } finally {
                     BufferPool.release(alpha);
+                    BufferPool.release(emitProbs);
                 }
             }
 
