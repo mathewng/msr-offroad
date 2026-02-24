@@ -36,6 +36,10 @@ self.onmessage = (event: MessageEvent) => {
     // 3. Predict the next 'steps' (usually chunk size) observation probabilities
     const results = hmm.predictSteps(sequence, steps);
 
-    // 4. Send the results (an array of Float64Arrays) back to the main thread
-    self.postMessage({ id, results });
+    // 4. Find the most likely sequence of hidden states (Viterbi path)
+    // This identifies the "regime" the system is currently in.
+    const viterbiPath = hmm.viterbi(sequence);
+
+    // 5. Send the results back to the main thread
+    self.postMessage({ id, results, viterbiPath });
 };

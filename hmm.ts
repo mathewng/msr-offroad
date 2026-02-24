@@ -726,6 +726,94 @@ export class HMM {
     }
 
     /**
+     * Viterbi Algorithm: Finds the most likely sequence of hidden states (the Viterbi path)
+     * given an observation sequence.
+     *
+     * This implementation uses log-space to prevent numerical underflow and handles
+     * missing observations (-1) by assuming a uniform emission probability. It uses
+     * the transposed transition matrix (At) for cache-friendly lookups.
+     *
+     * @param observations - The sequence of observed results.
+     * @returns An Int32Array containing the sequence of most likely hidden states.
+     */
+    public viterbi(observations: number[] | Int32Array): Int32Array {
+        const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
+        const T = obs.length;
+        const N = this.numStates;
+        const M = this.numObservations;
+
+        if (T === 0) return new Int32Array(0);
+
+        // delta[t][i] = max_{q1...qt-1} P(q1...qt-1, qt=i, O1...Ot | model)
+        // psi[t][i] = argmax_{q1...qt-1} P(q1...qt-1, qt=i, O1...Ot | model)
+        const delta = BufferPool.get(T * N);
+        const psi = new Int32Array(T * N);
+
+        // Pre-calculate logs of A, B, and pi to avoid repeated Math.log calls
+        const logAt = new Float64Array(this.At.length);
+        const logB = new Float64Array(this.B.length);
+        const logPi = new Float64Array(this.pi.length);
+
+        const eps = 1e-100;
+        for (let i = 0; i < this.At.length; i++) logAt[i] = Math.log(this.At[i]! + eps);
+        for (let i = 0; i < this.B.length; i++) logB[i] = Math.log(this.B[i]! + eps);
+        for (let i = 0; i < this.pi.length; i++) logPi[i] = Math.log(this.pi[i]! + eps);
+
+        // 1. Initialization (t=0)
+        const o0 = obs[0]!;
+        for (let i = 0; i < N; i++) {
+            const emissionLogProb = o0 === -1 ? 0 : logB[i * M + o0]!;
+            delta[i] = logPi[i]! + emissionLogProb;
+        }
+
+        // 2. Recursion (t=1..T-1)
+        for (let t = 1; t < T; t++) {
+            const tOff = t * N;
+            const ptOff = (t - 1) * N;
+            const ot = obs[t]!;
+
+            for (let j = 0; j < N; j++) {
+                let maxLogProb = -Infinity;
+                let bestPrevState = 0;
+                const jOff = j * N;
+                const emissionLogProb = ot === -1 ? 0 : logB[j * M + ot]!;
+
+                for (let i = 0; i < N; i++) {
+                    const prob = delta[ptOff + i]! + logAt[jOff + i]!;
+                    if (prob > maxLogProb) {
+                        maxLogProb = prob;
+                        bestPrevState = i;
+                    }
+                }
+                delta[tOff + j] = maxLogProb + emissionLogProb;
+                psi[tOff + j] = bestPrevState;
+            }
+        }
+
+        // 3. Termination
+        const path = new Int32Array(T);
+        let maxLogProb = -Infinity;
+        let lastState = 0;
+        const lastOff = (T - 1) * N;
+
+        for (let i = 0; i < N; i++) {
+            if (delta[lastOff + i]! > maxLogProb) {
+                maxLogProb = delta[lastOff + i]!;
+                lastState = i;
+            }
+        }
+        path[T - 1] = lastState;
+
+        // 4. Backtracking
+        for (let t = T - 2; t >= 0; t--) {
+            path[t] = psi[(t + 1) * N + path[t + 1]!];
+        }
+
+        BufferPool.release(delta);
+        return path;
+    }
+
+    /**
      * Updates the cached transposed transition matrix.
      */
     private updateTransposedA() {

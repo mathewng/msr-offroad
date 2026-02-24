@@ -42,8 +42,8 @@ export class WorkerPool {
             const { resolve } = currentTask;
             (worker as any).currentTask = null;
             this.idleWorkers.push(worker);
-            // Resolve the promise with the computed result from the worker
-            resolve(data.results);
+            // Resolve the promise with the full data payload from the worker
+            resolve(data);
             // After becoming idle, check if there's work waiting in the queue
             this.processQueue();
         }
