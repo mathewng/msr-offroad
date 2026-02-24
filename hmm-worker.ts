@@ -20,7 +20,7 @@ declare var self: Worker;
  */
 self.onmessage = (event: MessageEvent) => {
     // sequence is an Int32Array (likely backed by SharedArrayBuffer)
-    const { id, sequence, numStates, numObservations, iterations, tolerance, steps } = event.data;
+    const { id, sequence, numStates, numObservations, iterations, tolerance, smoothing, steps } = event.data;
 
     // 1. Initialize a new HMM with random parameters
     const hmm = new HMM(numStates, numObservations);
@@ -31,7 +31,7 @@ self.onmessage = (event: MessageEvent) => {
 
     // 3. Train the model using the Baum-Welch (EM) algorithm
     // This is the primary CPU-intensive operation.
-    hmm.train(sequence, iterations, tolerance);
+    hmm.train(sequence, iterations, tolerance, smoothing);
 
     // 3. Predict the next 'steps' (usually chunk size) observation probabilities
     const results = hmm.predictSteps(sequence, steps);

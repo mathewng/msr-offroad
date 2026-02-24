@@ -203,6 +203,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
                 numObservations: config.hmmObservations,
                 iterations: config.trainingIterations,
                 tolerance: config.convergenceTolerance,
+                smoothing: config.hmmSmoothing,
                 steps: chunk.length,
             }),
         );
@@ -293,6 +294,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
  * --zigzag-weight=<val>: Override the importance of ZigZag reversal signals.
  * --min-score=<val>: Confidence threshold for placing a bet.
  * --relative-threshold=<val>: Secondary threshold relative to the top choice.
+ * --hmm-smoothing=<val>: Laplace smoothing constant for HMM re-estimation.
  * --chunk-size=<val>: How many races to process before HMM retraining.
  * --print-config-only: Calculate empirical win rates and exit after printing the config.
  */
@@ -367,6 +369,14 @@ function parseArgs() {
         const weight = parseFloat(priorMatch.split("=")[1]!);
         if (!isNaN(weight)) {
             config = { ...config, priorWeight: weight };
+        }
+    }
+
+    const hmmSmoothingMatch = args.find((a) => a.startsWith("--hmm-smoothing="));
+    if (hmmSmoothingMatch && hmmSmoothingMatch.includes("=") && hmmSmoothingMatch.split("=")[1]!.trim() !== "") {
+        const smoothing = parseFloat(hmmSmoothingMatch.split("=")[1]!);
+        if (!isNaN(smoothing)) {
+            config = { ...config, hmmSmoothing: smoothing };
         }
     }
 

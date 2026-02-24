@@ -179,8 +179,9 @@ export class HMM {
      * @param observations - The sequence of observed results.
      * @param iterations - Maximum number of EM iterations (epochs).
      * @param tolerance - Log-likelihood improvement threshold for early stopping.
+     * @param smoothing - Laplace smoothing constant (pseudocount) to prevent zero probabilities and improve generalization.
      */
-    public train(observations: number[] | Int32Array, iterations: number = 100, tolerance: number = 0) {
+    public train(observations: number[] | Int32Array, iterations: number = 100, tolerance: number = 0, smoothing: number = 1e-6) {
         const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
         const T = obs.length;
         if (T < 2) return;
@@ -289,12 +290,13 @@ export class HMM {
 
                 // 4. M-Step: Maximum Likelihood Re-estimation
                 // Re-calculate A, B, and pi parameters using the accumulated expectations.
-                const epsilon = 1e-10; // Smoothing factor to prevent zero probabilities
+                // Use Laplace smoothing (pseudocounts) to ensure every outcome remains possible.
+                const eps = smoothing;
 
                 // Re-estimate and smooth Initial Probabilities (pi)
                 let piSum = 0;
                 for (let i = 0; i < N; i++) {
-                    this.pi[i]! += epsilon;
+                    this.pi[i]! += eps;
                     piSum += this.pi[i]!;
                 }
                 const invPiSum = 1.0 / piSum;
@@ -303,17 +305,17 @@ export class HMM {
                 // Re-estimate Transition (A) and Emission (B) Matrices
                 for (let i = 0; i < N; i++) {
                     const iOff = i * N;
-                    // Transitions: A[i][j] = sum(xi_tij) / sum(gamma_ti)
-                    const invDenomA = 1.0 / (denomA[i]! + (N * epsilon));
+                    // Transitions: A[i][j] = (sum(xi_tij) + eps) / (sum(gamma_ti) + N * eps)
+                    const invDenomA = 1.0 / (denomA[i]! + (N * eps));
                     for (let j = 0; j < N; j++) {
-                        this.A[iOff + j] = (accumA[iOff + j]! + epsilon) * invDenomA;
+                        this.A[iOff + j] = (accumA[iOff + j]! + eps) * invDenomA;
                     }
 
                     const iOffB = i * M;
-                    // Emissions: B[i][k] = sum(gamma_ti where o_t = k) / sum(gamma_ti)
-                    const invDenomB = 1.0 / (denomB[i]! + (M * epsilon));
+                    // Emissions: B[i][k] = (sum(gamma_ti where o_t = k) + eps) / (sum(gamma_ti) + M * eps)
+                    const invDenomB = 1.0 / (denomB[i]! + (M * eps));
                     for (let k = 0; k < M; k++) {
-                        this.B[iOffB + k] = (accumB[iOffB + k]! + epsilon) * invDenomB;
+                        this.B[iOffB + k] = (accumB[iOffB + k]! + eps) * invDenomB;
                     }
                 }
 

@@ -88,4 +88,5 @@ export interface BacktestConfig {
     relativeThreshold?: number; // Optional edge required over the race average score
     empiricalWinRates?: Record<number, number>; // Baseline win rates for each slot (1-6)
     priorWeight?: number; // The strength of the prior (virtual observations) for Laplace smoothing
+    hmmSmoothing?: number; // Laplace smoothing for HMM re-estimation
 }

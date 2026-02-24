@@ -42,6 +42,10 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     // The weight of the prior (fictitious sample size) for smoothing.
     // Higher values make the model stickier to historical averages.
     priorWeight: 1,
+
+    // Laplace smoothing constant for HMM re-estimation.
+    // Prevents zero-probability transitions and improves generalization.
+    hmmSmoothing: 1e-20,
 };
 
 /**
