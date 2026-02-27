@@ -2,25 +2,30 @@
 
 ## Toolchain
 
+- **Runtime**: Bun
+- **Language**: TypeScript 5.x
+- **Formatter**: Prettier
+
 ## Directory Layout
 
 - No src directory present; all source files are in root.
-
-- **Build**: `bun run backtest.ts`
-- **Lint & Format**: `bun run format` and `bun run lint`
-- **Test**: No test framework configured yet
+- Key modules: `backtest.ts`, `config.ts`, `hmm.ts`, `hmm-worker.ts`, `prediction-engine.ts`, `worker-pool.ts`, `random-pool.ts`, `optimizer.ts`, `analyze_data.ts`, `utils.ts`, `types.ts`
 
 ## Build, Lint, and Test Commands
 
 ### Build Commands
 
-- `bun run backtest.ts` - Run backtesting functionality
+- `bun run backtest` - Run backtesting functionality
 
 ### Lint and Format Commands
 
 - `bun run format` - Format all files using Prettier
 - `bun run format:check` - Check formatting without modifying files
-- `bun run lint` - Run TypeScript linter (if available)
+
+### Other Commands
+
+- `bun run benchmark` - Run memory benchmark (memory-benchmark.ts)
+- `./backtest.sh` - Run backtests with multiple strategies (yield, bet2, eff)
 
 ### Test Commands
 
@@ -74,8 +79,8 @@
 
 ## Data files for backtesting
 
-- `data_historical.txt`
-- `data_current.txt`
+- `data_historical.txt` - Historical race data
+- `data_current.txt` - Current season data
 
 ## Bun-Specific Notes
 
