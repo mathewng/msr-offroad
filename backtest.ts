@@ -434,8 +434,6 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
  * --bet2: Strategy that allows up to 2 bets per race.
  * --historical-weight=<val>: Override the importance of historical statistics.
  * --hmm-weight=<val>: Override the importance of HMM predictions.
- * --momentum-weight=<val>: Override the importance of momentum/trend signals.
- * --zigzag-weight=<val>: Override the importance of ZigZag reversal signals.
  * --min-score=<val>: Confidence threshold for placing a bet.
  * --relative-threshold=<val>: Secondary threshold relative to the top choice.
  * --hmm-smoothing=<val>: Laplace smoothing constant for HMM re-estimation.
@@ -462,10 +460,8 @@ function parseArgs() {
     // Dynamic Weights Overrides: Allows fine-tuning the model's ensemble components
     const historicalWeightMatch = args.find((a) => a.startsWith("--historical-weight="));
     const hmmWeightMatch = args.find((a) => a.startsWith("--hmm-weight="));
-    const momentumWeightMatch = args.find((a) => a.startsWith("--momentum-weight="));
-    const zigZagWeightMatch = args.find((a) => a.startsWith("--zigzag-weight="));
 
-    if (historicalWeightMatch || hmmWeightMatch || momentumWeightMatch || zigZagWeightMatch) {
+    if (historicalWeightMatch || hmmWeightMatch) {
         config = { ...config };
         if (historicalWeightMatch && historicalWeightMatch.includes("=") && historicalWeightMatch.split("=")[1]!.trim() !== "") {
             const weight = parseFloat(historicalWeightMatch.split("=")[1]!);
@@ -477,18 +473,6 @@ function parseArgs() {
             const weight = parseFloat(hmmWeightMatch.split("=")[1]!);
             if (!isNaN(weight)) {
                 config.scoreWeights = { ...config.scoreWeights, hmm: weight };
-            }
-        }
-        if (momentumWeightMatch && momentumWeightMatch.includes("=") && momentumWeightMatch.split("=")[1]!.trim() !== "") {
-            const weight = parseFloat(momentumWeightMatch.split("=")[1]!);
-            if (!isNaN(weight)) {
-                config.scoreWeights = { ...config.scoreWeights, momentum: weight };
-            }
-        }
-        if (zigZagWeightMatch && zigZagWeightMatch.includes("=") && zigZagWeightMatch.split("=")[1]!.trim() !== "") {
-            const weight = parseFloat(zigZagWeightMatch.split("=")[1]!);
-            if (!isNaN(weight)) {
-                config.scoreWeights = { ...config.scoreWeights, zigZag: weight };
             }
         }
     }

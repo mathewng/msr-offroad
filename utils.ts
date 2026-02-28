@@ -184,46 +184,7 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
         }
     }
 
-    // Calculate momentum bonus from consecutive wins
-    let momentumBonus: number | undefined;
-
-    if (allRaces.length > 1) {
-        // Count consecutive wins for each slot
-        const consecutiveWins: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
-        const totalWins: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
-
-        for (let i = 1; i < allRaces.length; i++) {
-            const prevRace = allRaces[i - 1]!;
-            const currRace = allRaces[i]!;
-
-            if (prevRace.winningSlot !== null && currRace.winningSlot !== null) {
-                totalWins[prevRace.winningSlot]!++;
-                if (prevRace.winningSlot === currRace.winningSlot) {
-                    consecutiveWins[prevRace.winningSlot]!++;
-                }
-            }
-        }
-
-        // Calculate momentum bonus as the ratio of consecutive wins to total wins,
-        // but only for slots that have enough data
-        const minSamples = 10; // Minimum number of samples needed to calculate meaningful momentum
-        let validSlots = 0;
-        let totalBonus = 0;
-
-        for (let slot = 1; slot <= 6; slot++) {
-            if (totalWins[slot]! >= minSamples) {
-                const bonus = consecutiveWins[slot]! / totalWins[slot]! - slotMap[slot]!.winRate;
-                totalBonus += bonus;
-                validSlots++;
-            }
-        }
-
-        if (validSlots > 0) {
-            momentumBonus = totalBonus / validSlots;
-        }
-    }
-
-    return { bucketMap, slotMap, venueMap, roundMap, lastWinningSlot: allRaces[allRaces.length - 1]?.winningSlot ?? null, momentumBonus };
+    return { bucketMap, slotMap, venueMap, roundMap };
 }
 
 /**
@@ -248,7 +209,6 @@ export function initializeStats(config: BacktestConfig): StatsResult {
         slotMap,
         venueMap: {},
         roundMap: {},
-        lastWinningSlot: null,
     };
 }
 
@@ -260,7 +220,6 @@ export function updateStats(stats: StatsResult, r: Race, config: BacktestConfig)
     if (r.winningSlot === null || r.winningPayout === null) return stats;
 
     const winningSlot = r.winningSlot;
-    stats.lastWinningSlot = winningSlot;
 
     // Lazy initialization for venue/round maps
     if (r.venue && !stats.venueMap[r.venue]) {

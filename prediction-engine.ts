@@ -84,34 +84,7 @@ export function predictRace(
             histWinRates[s] = winRate;
         }
 
-        // Apply momentum bonus if this slot won the previous race
-        let momentumBonus = 0.0;
-        if (slot === stats.lastWinningSlot) {
-            // Use a dynamic bonus based on historical momentum data
-            // Calculate momentum bonus from historical data instead of hardcoding
-            if (stats.momentumBonus !== undefined) {
-                momentumBonus = stats.momentumBonus;
-            } else {
-                // Fallback to hardcoded value if no momentum data available
-                momentumBonus = 0.29; // Using our observed momentum factor (1.29x - 1.0) scaled to 0-1 range
-            }
-        }
-
-        // Apply Zig-Zag bonus (preference for small step sizes based on empirical analysis)
-        // Step 0 (Same slot): High probability
-        // Step 1 (Adjacent slot): Highest probability overall
-        let zigZagBonus = 0.0;
-        if (stats.lastWinningSlot !== null) {
-            const dist = Math.abs(slot - stats.lastWinningSlot);
-            if (dist === 0) {
-                zigZagBonus = 1.0;
-            } else if (dist === 1) {
-                zigZagBonus = 0.7; // Slightly less than 1.0 to weight "same" higher when combined with momentum, though raw freq is higher
-            }
-        }
-
-        // Combine the historical statistical EV with the HMM sequence-based EV and momentum
-        const score = histEV * config.scoreWeights.historical + hmmEV * config.scoreWeights.hmm + momentumBonus * config.scoreWeights.momentum + zigZagBonus * config.scoreWeights.zigZag;
+        const score = histEV * config.scoreWeights.historical + hmmEV * config.scoreWeights.hmm;
 
         candidates.push({ slot, score });
     }

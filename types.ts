@@ -60,10 +60,6 @@ export interface StatsResult {
     venueMap: Record<string, Record<number, SlotStat>>;
     /** Maps round number (1-3) to slot stats for that round */
     roundMap: Record<number, Record<number, SlotStat>>;
-    /** The winner of the most recent race in the sequence */
-    lastWinningSlot: number | null;
-    /** Momentum bonus factor calculated from historical data */
-    momentumBonus?: number;
 }
 
 /**
@@ -82,8 +78,6 @@ export interface BacktestConfig {
     scoreWeights: {
         historical: number; // Weight for historical statistical EV (0.0 to 1.0)
         hmm: number; // Weight for HMM sequence-based EV (0.0 to 1.0)
-        momentum: number; // Weight for the streak/momentum bonus (0.0 to 1.0)
-        zigZag: number; // Weight for the zig-zag/neighbor bonus (0.0 to 1.0)
     };
     minScoreThreshold: number; // Hard floor for the final EV score before a bet is considered
     relativeThreshold?: number; // Optional edge required over the race average score
