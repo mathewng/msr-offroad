@@ -3,8 +3,8 @@
  * @description Formats and prints backtest results to the terminal.
  */
 
-import type { Race } from "./types";
-import { formatCurrency } from "./utils";
+import type { Race } from "../shared/types";
+import { formatCurrency } from "../shared/utils";
 
 /**
  * Tracks cumulative performance metrics throughout a backtest run.

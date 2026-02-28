@@ -5,7 +5,7 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "benchmark": "bun --expose-gc memory-benchmark.ts",
-        "backtest": "bun backtest.ts"
+        "backtest": "bun src/backtest/backtest.ts"
     },
     "devDependencies": {
         "@types/bun": "latest",

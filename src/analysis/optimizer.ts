@@ -1,4 +1,7 @@
 import { spawn } from "child_process";
+import { join } from "path";
+
+const PROJECT_ROOT = join(import.meta.dir, "..", "..");
 
 interface BacktestParams {
     betLimit: number;
@@ -8,13 +11,13 @@ interface BacktestParams {
 
 const BACKTEST_RUNS = 5;
 /**
- * Runs backtest.ts
+ * Runs backtest
  * and reads the console output to find the best settings for each betLimit: 1,2 and 3
  * - chunkSize: 3 or 6
  * - scoreWeights: starting from historical (1) and hmm (0) until hmm (0.6). historical+hmm must equal 1
  *
  * to maximise Profit
- * @param params The parameters for running backtest.ts
+ * @param params The parameters for running backtest
  */
 async function runBacktest(params: BacktestParams, highestProfit: number): Promise<{ minProfit: number; maxProfit: number; averageProfit: number; stdDev: number }> {
     // Run backtest multiple times and average the profit
@@ -71,10 +74,11 @@ async function runSingleBacktest(params: BacktestParams): Promise<number> {
             args.push(`--yield`);
         }
 
-        console.log(`Executing "bun backtest.ts ${args.join(" ")}"`);
-        // Spawn backtest process in project directory
-        const backtestProcess = spawn("bash", ["-c", `bun backtest.ts ${args.join(" ")}`], {
-            cwd: "/home/mathew/Development/Github/msr-offroad",
+        const backtestScript = join(PROJECT_ROOT, "src/backtest/backtest.ts");
+        console.log(`Executing "bun ${backtestScript} ${args.join(" ")}"`);
+        // Spawn backtest process in project directory (so data paths resolve)
+        const backtestProcess = spawn("bun", [backtestScript, ...args], {
+            cwd: PROJECT_ROOT,
         });
 
         // Capture stdout and stderr from the process
@@ -91,7 +95,7 @@ async function runSingleBacktest(params: BacktestParams): Promise<number> {
         // Handle process completion and extract profit from output
         backtestProcess.on("close", (code) => {
             if (code !== 0) {
-                reject(new Error(`backtest.ts exited with code ${code}`));
+                reject(new Error(`backtest exited with code ${code}`));
                 return;
             }
 
@@ -124,7 +128,7 @@ function stdDev(...numbers: number[]): number {
     return Math.sqrt(variance); // Population std dev
 }
 /**
- * Optimizes the settings for running backtest.ts by testing different combinations of parameters.
+ * Optimizes the settings for running backtest by testing different combinations of parameters.
  */
 /** @description Main optimization loop that tests all parameter combinations */
 async function optimizeSettings() {

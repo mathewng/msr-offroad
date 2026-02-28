@@ -6,8 +6,8 @@
  * Default file: data_current.txt
  */
 
-import { parseLines } from "./utils";
-import type { Race } from "./types";
+import { parseLines } from "../shared/utils";
+import type { Race } from "../shared/types";
 
 const file = process.argv[2] ?? "data_current.txt";
 const file_historical = process.argv[3] ?? "data_historical.txt";

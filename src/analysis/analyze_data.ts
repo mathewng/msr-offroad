@@ -1,5 +1,5 @@
 import * as fs from "fs";
-import { parseLines } from "./utils";
+import { parseLines } from "../shared/utils";
 
 const data = fs.readFileSync("data_historical.txt", "utf-8");
 const lines = data.split(/\r?\n/);

@@ -3,8 +3,8 @@
  * @description HMM vs historical diagnostics: discrimination, entropy, agreement.
  */
 
-import type { HmmDiagnostics } from "./types";
-import { argMax } from "./utils";
+import type { HmmDiagnostics } from "../shared/types";
+import { argMax } from "../shared/utils";
 
 /** Entropy of a discrete distribution (natural log). Uses 0 for 0*log(0). */
 function entropy(probs: number[]): number {

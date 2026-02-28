@@ -1,5 +1,5 @@
-import type { Race, StatsResult, BacktestConfig, HmmDiagnostics } from "./types";
-import { getPayoutBucket, EQUAL_SLOT_PROBABILITY } from "./utils";
+import type { Race, StatsResult, BacktestConfig, HmmDiagnostics } from "../shared/types";
+import { getPayoutBucket, EQUAL_SLOT_PROBABILITY } from "../shared/utils";
 
 /**
  * The core decision engine.

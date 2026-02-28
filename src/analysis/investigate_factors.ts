@@ -15,8 +15,8 @@
  */
 
 import { readFileSync } from "fs";
-import type { Race } from "./types";
-import { parseLines } from "./utils";
+import type { Race } from "../shared/types";
+import { parseLines } from "../shared/utils";
 
 const HIST_FILE = "data_historical.txt";
 const CURR_FILE = "data_current.txt";

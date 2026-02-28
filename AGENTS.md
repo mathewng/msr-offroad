@@ -8,8 +8,14 @@
 
 ## Directory Layout
 
-- No src directory present; all source files are in root.
-- Key modules: `backtest.ts`, `config.ts`, `hmm.ts`, `hmm-worker.ts`, `prediction-engine.ts`, `worker-pool.ts`, `random-pool.ts`, `optimizer.ts`, `analyze_data.ts`, `utils.ts`, `types.ts`
+- **src/** – All TypeScript source code.
+  - **src/shared/** – `types.ts`, `utils.ts`, `config.ts` (used across the app).
+  - **src/core/** – `hmm.ts`, `random-pool.ts`, `prediction-engine.ts` (HMM model and prediction).
+  - **src/workers/** – `worker-pool.ts`, `hmm-worker.ts` (concurrency).
+  - **src/backtest/** – `backtest.ts`, `backtest-args.ts`, `result-printer.ts`, `hmm-diagnostics.ts`.
+  - **src/analysis/** – `analyze_data.ts`, `data_check.ts`, `investigate_factors.ts`, `optimizer.ts`.
+  - **src/main.ts** – Alternate CLI entry.
+- Data files (`data_historical.txt`, `data_current.txt`, etc.) remain in project root.
 
 ## Build, Lint, and Test Commands
 

@@ -3,8 +3,8 @@
  * @description CLI argument parsing for the backtest runner.
  */
 
-import { CONFIG_BET2, CONFIG_EFFICIENCY, CONFIG_HIGHEST_YIELD } from "./config";
-import type { BacktestConfig } from "./types";
+import { CONFIG_BET2, CONFIG_EFFICIENCY, CONFIG_HIGHEST_YIELD } from "../shared/config";
+import type { BacktestConfig } from "../shared/types";
 
 export interface ParsedBacktestArgs {
     prevFile: string | undefined;

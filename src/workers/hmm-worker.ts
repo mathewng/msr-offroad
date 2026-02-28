@@ -1,4 +1,4 @@
-import { HMM } from "./hmm";
+import { HMM } from "../core/hmm";
 
 /**
  * HMM Worker Script

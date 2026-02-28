@@ -6,10 +6,10 @@
  * Hidden Markov Models (HMM) trained in parallel to predict race outcomes.
  */
 
-import { calculateEmpiricalWinRates, calculateStats, getPayoutBucket, parseLines, updateStats } from "./utils";
-import { predictRace } from "./prediction-engine";
-import type { BacktestConfig, Race, StatsResult } from "./types";
-import { WorkerPool } from "./worker-pool";
+import { calculateEmpiricalWinRates, calculateStats, getPayoutBucket, parseLines, updateStats } from "../shared/utils";
+import { predictRace } from "../core/prediction-engine";
+import type { BacktestConfig, Race, StatsResult } from "../shared/types";
+import { WorkerPool } from "../workers/worker-pool";
 import type { BacktestStats } from "./result-printer";
 import { printHeader, printRow, printSummary } from "./result-printer";
 import { printHmmDiagnostics, type DiagnosticSample } from "./hmm-diagnostics";
@@ -121,6 +121,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
 
     config.empiricalWinRates = calculateEmpiricalWinRates(previousMonthsRaces);
 
+    // Path is resolved by WorkerPool relative to worker-pool.ts (src/workers/), so same-dir hmm-worker
     const pool = new WorkerPool(config.maxWorkers, "./hmm-worker.ts");
     const history: Race[] = [...previousMonthsRaces];
     const stats: BacktestStats = {

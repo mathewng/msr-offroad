@@ -1,4 +1,4 @@
-import { CONFIG } from "./config";
+import { CONFIG } from "../shared/config";
 
 /**
  * High-performance random number pool that pre-generates random values
