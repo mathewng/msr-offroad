@@ -13,7 +13,7 @@ import { WorkerPool } from "./worker-pool";
 import type { BacktestStats } from "./result-printer";
 import { printHeader, printRow, printSummary } from "./result-printer";
 import { printHmmDiagnostics, type DiagnosticSample } from "./hmm-diagnostics";
-import { parseBacktestArgs } from "./backtest-args";
+import { parseBacktestArgs, BACKTEST_USAGE } from "./backtest-args";
 
 const OBS_PER_CONTEXT = 18; // 6 slots × 3 buckets
 
@@ -236,9 +236,7 @@ if (showConfigOnly) {
 }
 
 if (!prevFile || !currFile) {
-    console.error(
-        "Usage: bun backtest.ts <previous_month_data> <current_month_data> [--efficiency|--yield|--bet2] [overrides...]",
-    );
+    console.error(BACKTEST_USAGE);
     process.exit(1);
 }
 

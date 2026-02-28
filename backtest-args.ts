@@ -13,6 +13,32 @@ export interface ParsedBacktestArgs {
     showConfigOnly: boolean;
 }
 
+export const BACKTEST_USAGE = `Usage: bun backtest.ts <historical_data> <target_data> [options]
+
+Positional:
+  <historical_data>   Path to historical race data (training set)
+  <target_data>      Path to target race data (test set)
+
+Strategy (pick one):
+  --efficiency, -e   Maximize ROI (single bet, selective)
+  --yield, -y        Maximize net profit (default, up to 3 bets)
+  --bet2, -b2        Up to 2 bets per race
+
+Overrides:
+  --historical-weight=<n>   Weight for historical stats (0–1)
+  --hmm-weight=<n>          Weight for HMM predictions (0–1)
+  --min-score=<n>           Minimum score threshold to bet
+  --relative-threshold=<n>  Edge over race average required
+  --prior-weight=<n>        Prior strength for Laplace smoothing
+  --hmm-smoothing=<n>       HMM re-estimation smoothing
+  --chunk-size=<n>          Races per walk-forward chunk
+  --restarts=<n>            HMM training restarts per model
+
+Other:
+  --diagnose-hmm      Print HMM vs historical diagnostics at end
+  --print-config-only Print config (with empirical win rates) and exit
+`;
+
 /** Returns the value after "=" for the first arg starting with prefix, or undefined. */
 function getFlagValue(args: string[], prefix: string): string | undefined {
     const arg = args.find((a) => a.startsWith(prefix));
