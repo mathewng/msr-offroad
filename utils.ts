@@ -2,6 +2,15 @@ import type { BucketStat, Race, RaceTime, SlotStat, StatsResult, BacktestConfig 
 
 export const EQUAL_SLOT_PROBABILITY = 1 / 6;
 
+/** Index of max value in array (0-based). Ties break to first. */
+export function argMax(arr: number[]): number {
+    let best = 0;
+    for (let i = 1; i < arr.length; i++) {
+        if (arr[i]! > arr[best]!) best = i;
+    }
+    return best;
+}
+
 /**
  * Parses raw lines from a data file into an array of Race objects.
  *

@@ -133,7 +133,7 @@ async function optimizeSettings() {
     const weightAdjustStep = 0.01;
     const weightAdjustRange = 1;
     const historicalWeights = Array.from({ length: fixPrecision(weightAdjustRange / weightAdjustStep) }, (_, i) => fixPrecision(1 - i * weightAdjustStep));
-    const chunkSizes = [2, 3, 6];
+    const chunkSizes = [1, 3, 6];
 
     // Initialize tracking variables for best results
     let bestMaxParams: BacktestParams = {

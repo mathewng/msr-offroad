@@ -6,32 +6,21 @@
  * Hidden Markov Models (HMM) trained in parallel to predict race outcomes.
  */
 
-import { CONFIG_BET2, CONFIG_EFFICIENCY, CONFIG_HIGHEST_YIELD } from "./config";
-import { calculateEmpiricalWinRates } from "./utils";
+import { calculateEmpiricalWinRates, calculateStats, getPayoutBucket, parseLines, updateStats } from "./utils";
 import { predictRace } from "./prediction-engine";
-import type { BacktestConfig, Race, HmmDiagnostics } from "./types";
-import { calculateStats, formatCurrency, getPayoutBucket, parseLines, updateStats } from "./utils";
+import type { BacktestConfig, Race, StatsResult } from "./types";
 import { WorkerPool } from "./worker-pool";
+import type { BacktestStats } from "./result-printer";
+import { printHeader, printRow, printSummary } from "./result-printer";
+import { printHmmDiagnostics, type DiagnosticSample } from "./hmm-diagnostics";
+import { parseBacktestArgs } from "./backtest-args";
 
-/**
- * Tracks cumulative performance metrics throughout a backtest run.
- */
-interface BacktestStats {
-    totalProfit: number; // Net profit/loss in currency units
-    correctPredictions: number; // Count of races where at least one bet was a winner
-    totalPredictions: number; // Total number of races where at least one bet was placed
-    totalBetCost: number; // Total amount wagered (1 unit per bet)
-    skippedRaces: number; // Number of races where the system chose not to bet
-}
+const OBS_PER_CONTEXT = 18; // 6 slots × 3 buckets
 
 /**
  * Loads race data from a flat file and parses it into structured Race objects.
- * Uses Bun's high-performance file I/O.
- *
- * @param filePath - The local path to the raw text data file.
- * @returns A promise resolving to an array of parsed Race objects.
  */
-async function loadRaces(filePath: string | undefined): Promise<Race[]> {
+export async function loadRaces(filePath: string | undefined): Promise<Race[]> {
     if (!filePath) return [];
     try {
         const file = Bun.file(filePath);
@@ -45,206 +34,83 @@ async function loadRaces(filePath: string | undefined): Promise<Race[]> {
     return [];
 }
 
-/**
- * Formats and prints backtest results to the terminal.
- * Designed for readability, it outputs each race row-by-row and
- * provides a final statistical summary of the run.
- */
-class ResultPrinter {
-    // 126 characters wide for a standard terminal width
-    private static readonly SEPARATOR = "-".repeat(126);
-
-    /**
-     * Table Columns:
-     * Day | Venue | Time | R: Race Number | Bets: Slots being bet on | Act: Actual Winner
-     * Pay: Actual Payout | Score: Model confidence score | Win?: Outcome | Profit: Net of the race
-     * Cumulative: Total profit so far | Status: Execution status (WIN/LOSS/PENDING/SKIPPED)
-     * Mode: Consensus HMM hidden state
-     */
-    private static readonly HEADER = `${"Day".padStart(3)} | ${"Venue".padEnd(14)} | ${"Time".padEnd(5)} | R | ${"Mode".padStart(4)} | ${"Bets".padEnd(7)} | ${"Act".padStart(3)} | ${"Pay".padStart(4)} | ${"Score".padStart(6)} | ${"Win?".padEnd(4)} | ${"Profit".padStart(8)} | ${"Cumulative".padStart(10)} | ${"Status".padEnd(8)}`;
-
-    /**
-     * Prints the table's header and separators.
-     */
-    static printHeader() {
-        console.log([this.SEPARATOR, this.HEADER, this.SEPARATOR].join("\n"));
-    }
-
-    /**
-     * Buffers and prints a single result row.
-     *
-     * @param race - The race being processed.
-     * @param bets - Array of slot indices (1-6) the model bet on.
-     * @param winningSlot - The actual winning slot index (null if pending).
-     * @param winningPayout - The payout for the winning slot (null if pending).
-     * @param score - The confidence score assigned to the prediction.
-     * @param raceProfit - The net profit/loss for this specific race.
-     * @param totalProfit - The cumulative profit up to this point in the backtest.
-     * @param status - Textual status string.
-     * @param regime - The consensus hidden state index.
-     */
-    static printRow(race: Race, bets: number[], winningSlot: number | null, winningPayout: number | null, score: number, raceProfit: number, totalProfit: number, status: string, regime: number) {
-        // Visual representation of bets (e.g., "1 3 5")
-        const betDisplay = [1, 2, 3, 4, 5, 6].map((s) => (bets.includes(s) ? s.toString() : " ")).join("");
-
-        const isPending = winningSlot === null;
-
-        /**
-         * Win Status Logic:
-         * - PENDING if outcome is unknown.
-         * - YES if the race was profitable OR if any of our bets matched the winning slot.
-         * - NO otherwise.
-         */
-        const winStatus = isPending ? "-" : raceProfit > 0 || (bets.includes(winningSlot!) && winningPayout! >= 1) ? "YES" : "NO";
-
-        console.log(
-            `${race.day.toString().padStart(3)} | ${(race.venue || "").padEnd(14)} | ${race.time.padEnd(5)} | ${race.raceNumber} | ${("S" + regime).padStart(4)} | ${betDisplay.padEnd(7)} | ${isPending ? "?".padStart(3) : winningSlot!.toString().padStart(3)} | ${isPending ? "?".padStart(4) : winningPayout!.toString().padStart(4)} | ${score.toFixed(2).padStart(6)} | ${winStatus.padEnd(4)} | ${isPending ? "-".padStart(8) : raceProfit.toFixed(2).padStart(8)} | ${totalProfit.toFixed(2).padStart(10)} | ${status.padEnd(8)}`,
-        );
-    }
-
-    /**
-     * Summarizes the entire backtest run including ROI and Accuracy metrics.
-     *
-     * ROI = Net Profit / Total Units Wagered
-     * Accuracy = Correct Race Predictions / Total Races Bet On
-     */
-    static printSummary(stats: BacktestStats) {
-        const { totalProfit, totalBetCost, correctPredictions, totalPredictions } = stats;
-        const roi = totalBetCost > 0 ? (totalProfit / totalBetCost) * 100 : 0;
-        const accuracy = (correctPredictions / (totalPredictions || 1)) * 100;
-
-        console.log(this.SEPARATOR);
-        console.log(
-            `ROI: ${roi.toFixed(2).padStart(6)}% | Profit: ${formatCurrency(totalProfit).padStart(6, " ")} | Accuracy: ${accuracy.toFixed(2)}% | Total Bets: ${totalBetCost} | Total Preds: ${totalPredictions}`,
-        );
-    }
+/** Builds the observation sequence from history (encoding: round/slot/bucket). */
+function buildInitialSequence(history: Race[]): number[] {
+    return history.map((r) => {
+        if (r.winningSlot === null || r.winningPayout === null) return -1;
+        const bucket = getPayoutBucket(r.winningPayout, r.winningSlot);
+        return (r.raceNumber - 1) * OBS_PER_CONTEXT + (r.winningSlot - 1) * 3 + bucket;
+    });
 }
 
-/**
- * Helper: index of max value in array (0-based). Ties break to first.
- */
-function argMax(arr: number[]): number {
-    let best = 0;
-    for (let i = 1; i < arr.length; i++) {
-        if (arr[i]! > arr[best]!) best = i;
-    }
-    return best;
-}
-
-/**
- * Entropy of a discrete distribution (natural log). Uses 0 for 0*log(0).
- */
-function entropy(probs: number[]): number {
-    let h = 0;
-    for (const p of probs) {
-        if (p > 0) h -= p * Math.log(p);
-    }
-    return h;
-}
-
-/**
- * Sample standard deviation.
- */
-function sampleStd(values: number[], mean: number): number {
-    if (values.length < 2) return 0;
-    const variance = values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (values.length - 1);
-    return Math.sqrt(variance);
-}
-
-/**
- * Prints HMM vs historical diagnostics to see if the HMM is discriminating.
- * - HMM max-prob stats and entropy (flat vs peaked)
- * - Histogram of max HMM prob
- * - Agreement between HMM top slot and historical top slot
- * - When outcome is known: how often HMM top vs historical top matched the winner
- */
-function printHmmDiagnostics(samples: (HmmDiagnostics & { winningSlot: number | null })[]): void {
-    const N = samples.length;
-    const maxHmmProbs: number[] = [];
-    const maxHistRates: number[] = [];
-    const entropies: number[] = [];
-    let agreementCount = 0;
-    let withOutcome = 0;
-    let hmmTopCorrect = 0;
-    let histTopCorrect = 0;
-
-    const BINS = [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 1];
-    const numBins = BINS.length - 1;
-    const binCounts = new Array(numBins).fill(0);
-
-    for (const { hmmSlotProbs, histWinRates, winningSlot } of samples) {
-        const maxHmm = Math.max(...hmmSlotProbs);
-        const maxHist = Math.max(...histWinRates);
-        const topHmmSlot = argMax(hmmSlotProbs) + 1;
-        const topHistSlot = argMax(histWinRates) + 1;
-
-        maxHmmProbs.push(maxHmm);
-        maxHistRates.push(maxHist);
-        entropies.push(entropy(hmmSlotProbs));
-
-        if (topHmmSlot === topHistSlot) agreementCount++;
-
-        if (winningSlot !== null) {
-            withOutcome++;
-            if (topHmmSlot === winningSlot) hmmTopCorrect++;
-            if (topHistSlot === winningSlot) histTopCorrect++;
+/** Returns the consensus regime (mode of last Viterbi state) across ensemble predictions. */
+function getConsensusRegime(allEnsemblePredictions: { viterbiPath?: number[] }[]): number {
+    const regimeCounts = new Map<number, number>();
+    for (const pred of allEnsemblePredictions) {
+        if (pred.viterbiPath && pred.viterbiPath.length > 0) {
+            const lastState = pred.viterbiPath[pred.viterbiPath.length - 1]!;
+            regimeCounts.set(lastState, (regimeCounts.get(lastState) ?? 0) + 1);
         }
-
-        let bi = 0;
-        while (bi < numBins - 1 && maxHmm >= BINS[bi + 1]!) bi++;
-        binCounts[bi]++;
     }
-
-    const meanMaxHmm = maxHmmProbs.reduce((a, b) => a + b, 0) / N;
-    const stdMaxHmm = sampleStd(maxHmmProbs, meanMaxHmm);
-    const meanEntropy = entropies.reduce((a, b) => a + b, 0) / N;
-    const uniformEntropy = Math.log(6); // max entropy for 6 outcomes
-
-    console.log("\n" + "=".repeat(60));
-    console.log("HMM DIAGNOSTICS");
-    console.log("=".repeat(60));
-    console.log(`Races with diagnostics: ${N}`);
-    console.log("");
-    console.log("HMM slot-probability distribution:");
-    console.log(`  Max prob per race: mean = ${meanMaxHmm.toFixed(4)}, std = ${stdMaxHmm.toFixed(4)}`);
-    console.log(`  (Uniform would give mean ≈ ${(1 / 6).toFixed(4)}; higher mean = more discriminating)`);
-    console.log(`  Entropy (mean): ${meanEntropy.toFixed(4)} (uniform = ${uniformEntropy.toFixed(4)}; lower = more peaked)`);
-    console.log("");
-    console.log("Histogram of max HMM prob (per race):");
-    for (let i = 0; i < numBins; i++) {
-        const label = `[${BINS[i]!.toFixed(2)} - ${BINS[i + 1]!.toFixed(2)})`;
-        const bar = "#".repeat(Math.min(40, binCounts[i]!));
-        console.log(`  ${label.padEnd(14)} ${binCounts[i]!.toString().padStart(4)} ${bar}`);
+    let consensusRegime = 0;
+    let maxCount = -1;
+    for (const [state, count] of regimeCounts) {
+        if (count > maxCount) {
+            maxCount = count;
+            consensusRegime = state;
+        }
     }
-    console.log("");
-    console.log("HMM vs Historical agreement (same top slot):");
-    console.log(`  ${agreementCount} / ${N} (${((agreementCount / N) * 100).toFixed(1)}%)`);
-    console.log("");
-    if (withOutcome > 0) {
-        console.log("When outcome known (top-slot accuracy):");
-        console.log(`  HMM top slot was winner:  ${hmmTopCorrect} / ${withOutcome} (${((hmmTopCorrect / withOutcome) * 100).toFixed(1)}%)`);
-        console.log(`  Historical top was winner: ${histTopCorrect} / ${withOutcome} (${((histTopCorrect / withOutcome) * 100).toFixed(1)}%)`);
+    return consensusRegime;
+}
+
+/** Aggregates ensemble step probabilities for one race index into a single Float64Array. */
+function aggregateStepProbs(
+    allEnsemblePredictions: { results: (Float64Array | number[] | undefined)[] }[],
+    raceIndex: number,
+    numObservations: number,
+    invEnsembleSize: number,
+    out: Float64Array,
+): void {
+    out.fill(0);
+    for (const pred of allEnsemblePredictions) {
+        const stepProbs = pred.results[raceIndex];
+        if (stepProbs) {
+            for (let k = 0; k < numObservations; k++) {
+                out[k] = out[k]! + (stepProbs[k] ?? 0) * invEnsembleSize;
+            }
+        }
     }
-    console.log("=".repeat(60));
+}
+
+/** Evaluates bets against the race outcome; returns race profit and number of winning bets. */
+function evaluateRaceOutcome(bets: number[], race: Race): { raceProfit: number; raceWins: number } {
+    let raceProfit = 0;
+    let raceWins = 0;
+    if (race.winningSlot === null) return { raceProfit, raceWins };
+    for (const slot of bets) {
+        if (slot === race.winningSlot) {
+            raceProfit += (race.winningPayout ?? 0) - 1;
+            raceWins++;
+        } else {
+            raceProfit -= 1;
+        }
+    }
+    return { raceProfit, raceWins };
+}
+
+function computeStatus(bets: number[], isPending: boolean, raceWins: number): string {
+    if (bets.length === 0) return isPending ? "PENDING" : "SKIPPED";
+    return isPending ? "???" : raceWins > 0 ? "WIN" : "LOSS";
 }
 
 /**
- * The core backtest execution engine.
- * Implements "Walk-Forward" simulation to accurately reflect real-world performance.
+ * Core backtest engine: walk-forward simulation.
  *
- * Walk-Forward Lifecycle:
- * 1. Initialize historical statistics from past data (e.g., previous month).
- * 2. Process current races in chunks (e.g., 20 races at a time).
- * 3. Before each chunk, retrain an ensemble of HMMs on ALL data known so far.
- * 4. Parallelized HMM training using WorkerPool ensures performance on multicore systems.
- * 5. Predict outcomes for the next chunk, update stats after each race.
- * 6. Repeat until all races in the target dataset are processed.
- *
- * @param prevFile - Path to historical race results (the "Training" set).
- * @param currFile - Path to target race results (the "Test" set).
- * @param config - Global configuration governing weights, thresholds, and simulation parameters.
+ * 1. Initialize stats from historical data.
+ * 2. Process target races in chunks; before each chunk, retrain HMM ensemble.
+ * 3. For each race: aggregate ensemble probs, predict bets, evaluate outcome, update history/stats.
  */
-async function runBacktest(prevFile: string, currFile: string, config: BacktestConfig) {
+async function runBacktest(prevFile: string, currFile: string, config: BacktestConfig): Promise<void> {
     const previousMonthsRaces = await loadRaces(prevFile);
     const currentMonthRaces = await loadRaces(currFile);
 
@@ -253,13 +119,10 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
         process.exit(1);
     }
 
-    // Dynamic configuration update: Calculate empirical win rates from the historical data provided
-    // This allows the model to adapt its priors based on the specific historical dataset.
-    config.empiricalWinRates = calculateEmpiricalWinRates(previousMonthsRaces);    
+    config.empiricalWinRates = calculateEmpiricalWinRates(previousMonthsRaces);
 
-    // Initialize the worker pool for parallel HMM training (ensemble approach)
     const pool = new WorkerPool(config.maxWorkers, "./hmm-worker.ts");
-    const history = [...previousMonthsRaces];
+    const history: Race[] = [...previousMonthsRaces];
     const stats: BacktestStats = {
         totalProfit: 0,
         correctPredictions: 0,
@@ -268,48 +131,25 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
         skippedRaces: 0,
     };
 
-    /**
-     * HMM Observation Sequence Encoding (expanded alphabet with round):
-     * Observation = (round - 1) * 18 + (slot - 1) * 3 + bucket.
-     * 3 rounds × 6 slots × 3 buckets = 54 symbols. Uses -1 for missing data.
-     */
-    const OBS_PER_CONTEXT = 18; // 6 slots × 3 buckets
-    let sequence = history.map((r) => {
-        if (r.winningSlot === null || r.winningPayout === null) return -1;
-        const bucket = getPayoutBucket(r.winningPayout, r.winningSlot);
-        return (r.raceNumber - 1) * OBS_PER_CONTEXT + (r.winningSlot - 1) * 3 + bucket;
-    });
-
-    /**
-     * Mechanical Sympathy (Performance Optimization):
-     * SharedArrayBuffer allows multiple worker threads to access the observation sequence
-     * with zero-copy overhead, which is critical for the intensive ensemble training.
-     */
+    let sequence = buildInitialSequence(history);
     const maxSequenceLength = sequence.length + currentMonthRaces.length;
-    const sharedBuffer = new SharedArrayBuffer(maxSequenceLength * 4); // 4 bytes per Int32
+    const sharedBuffer = new SharedArrayBuffer(maxSequenceLength * 4);
     const sequenceArray = new Int32Array(sharedBuffer);
     sequenceArray.set(sequence);
 
-    // Reusable Float64Array to aggregate probabilities from the ensemble
     const aggregatedProbs = new Float64Array(config.hmmObservations);
+    let currentStats: StatsResult = calculateStats(history, config);
+    const diagnosticSamples: DiagnosticSample[] = [];
+    const invEnsembleSize = 1.0 / config.ensembleSize;
 
-    // Initial statistical baseline from the historical set
-    let currentStats = calculateStats(history, config);
-    const diagnosticSamples: (HmmDiagnostics & { winningSlot: number | null })[] = [];
     console.log(`Loaded history: ${history.length}, Target: ${currentMonthRaces.length}. Using ${config.maxWorkers} cores.`);
-    ResultPrinter.printHeader();
+    printHeader();
 
-    // Process target races in chunks to simulate periodic retraining of models
     for (let i = 0; i < currentMonthRaces.length; i += config.chunkSize) {
         const chunk = currentMonthRaces.slice(i, i + config.chunkSize);
-
-        // Update the SharedArrayBuffer with the most recent sequence data before retraining
         const currentSequenceView = sequenceArray.subarray(0, sequence.length);
         currentSequenceView.set(sequence);
 
-        // Retrain an ensemble of models in parallel.
-        // Different models capture varying local optima, and averaging their
-        // results (Ensemble Averaging) improves overall predictive stability.
         const ensemblePromises = Array.from({ length: config.ensembleSize }, () =>
             pool.run({
                 sequence: currentSequenceView,
@@ -319,73 +159,26 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
                 restarts: config.trainingRestarts,
                 tolerance: config.convergenceTolerance,
                 smoothing: config.hmmSmoothing,
-                steps: chunk.length, // Predict probabilities for the exact number of races in the upcoming chunk
+                steps: chunk.length,
             }),
         );
 
         const allEnsemblePredictions = await Promise.all(ensemblePromises);
-        // Pre-calculate the inverse of the ensemble size to replace division with multiplication
-        // in the inner aggregation loop (performance optimization).
-        const invEnsembleSize = 1.0 / config.ensembleSize;
+        const consensusRegime = getConsensusRegime(allEnsemblePredictions);
 
-        // Determine the consensus "Regime" (most likely hidden state) for the current historical state.
-        // We take the mode of the last state in the Viterbi path across all ensemble members.
-        const regimeCounts = new Map<number, number>();
-        for (const pred of allEnsemblePredictions) {
-            if (pred.viterbiPath && pred.viterbiPath.length > 0) {
-                const lastState = pred.viterbiPath[pred.viterbiPath.length - 1];
-                regimeCounts.set(lastState, (regimeCounts.get(lastState) || 0) + 1);
-            }
-        }
-        let consensusRegime = 0;
-        if (regimeCounts.size > 0) {
-            let maxRegimeCount = -1;
-            for (const [state, count] of regimeCounts) {
-                if (count > maxRegimeCount) {
-                    maxRegimeCount = count;
-                    consensusRegime = state;
-                }
-            }
-        }
-
-        // Process each race in the current chunk one-by-one
         for (let j = 0; j < chunk.length; j++) {
             const currentRace = chunk[j]!;
-            aggregatedProbs.fill(0);
+            aggregateStepProbs(allEnsemblePredictions, j, config.hmmObservations, invEnsembleSize, aggregatedProbs);
 
-            // Compute the average probability for each observation across all models in the ensemble
-            for (let e = 0; e < allEnsemblePredictions.length; e++) {
-                const stepProbs = allEnsemblePredictions[e]!.results[j];
-                if (stepProbs) {
-                    for (let k = 0; k < config.hmmObservations; k++) {
-                        aggregatedProbs[k] = aggregatedProbs[k]! + stepProbs[k]! * invEnsembleSize;
-                    }
-                }
-            }
-
-            // Combine HMM probabilities with historical statistics to determine bets
             const { bets, score, diagnostics } = predictRace(currentRace, currentStats, aggregatedProbs, config);
             if (config.diagnoseHmm && diagnostics) {
                 diagnosticSamples.push({ ...diagnostics, winningSlot: currentRace.winningSlot ?? null });
             }
+
             const isPending = currentRace.winningSlot === null;
-            let raceProfit = 0;
-            let raceWins = 0;
+            const { raceProfit, raceWins } = evaluateRaceOutcome(bets, currentRace);
 
-            // Evaluate prediction outcome against ground truth
             if (!isPending) {
-                for (const slot of bets) {
-                    if (slot === currentRace.winningSlot) {
-                        // Success: Gain = Payout - Stake (1 unit per bet)
-                        raceProfit += currentRace.winningPayout! - 1;
-                        raceWins++;
-                    } else {
-                        // Failure: Loss = Stake (1 unit per bet)
-                        raceProfit -= 1;
-                    }
-                }
-
-                // Update cumulative stats if any bets were placed
                 if (bets.length > 0) {
                     stats.totalProfit += raceProfit;
                     stats.totalBetCost += bets.length;
@@ -396,152 +189,43 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
                 }
             }
 
-            const status = bets.length > 0 ? (isPending ? "???" : raceWins > 0 ? "WIN" : "LOSS") : isPending ? "PENDING" : "SKIPPED";
+            const status = computeStatus(bets, isPending, raceWins);
+            printRow(
+                currentRace,
+                bets,
+                currentRace.winningSlot,
+                currentRace.winningPayout,
+                score,
+                raceProfit,
+                stats.totalProfit,
+                status,
+                consensusRegime,
+            );
 
-            ResultPrinter.printRow(currentRace, bets, currentRace.winningSlot, currentRace.winningPayout, score, raceProfit, stats.totalProfit, status, consensusRegime);
-
-            // Walk-forward Step: Update the model's history and statistics after EACH race
-            // This ensures the NEXT race prediction has access to the result of the CURRENT race.
             if (!isPending) {
                 const bucket = getPayoutBucket(currentRace.winningPayout!, currentRace.winningSlot!);
-                sequence.push((currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket);
+                sequence.push(
+                    (currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket,
+                );
                 updateStats(currentStats, currentRace, config);
             } else {
-                sequence.push(-1); // Maintain temporal sequence even if result is unknown
+                sequence.push(-1);
             }
             history.push(currentRace);
         }
     }
 
     pool.terminate();
-    ResultPrinter.printSummary(stats);
+    printSummary(stats);
     if (config.diagnoseHmm && diagnosticSamples.length > 0) {
         printHmmDiagnostics(diagnosticSamples);
     }
 }
 
-/**
- * CLI Argument Parser.
- * Configures the backtest based on user input flags and positional arguments.
- *
- * Positional Arguments:
- * 1. Historical data file (training set)
- * 2. Target data file (test set)
- *
- * Flags:
- * --efficiency: Use configuration optimized for higher ROI.
- * --yield: Use configuration optimized for higher net profit.
- * --bet2: Strategy that allows up to 2 bets per race.
- * --historical-weight=<val>: Override the importance of historical statistics.
- * --hmm-weight=<val>: Override the importance of HMM predictions.
- * --min-score=<val>: Confidence threshold for placing a bet.
- * --relative-threshold=<val>: Secondary threshold relative to the top choice.
- * --hmm-smoothing=<val>: Laplace smoothing constant for HMM re-estimation.
- * --chunk-size=<val>: How many races to process before HMM retraining.
- * --restarts=<val>: Number of HMM training sessions per model.
- * --print-config-only: Calculate empirical win rates and exit after printing the config.
- * --diagnose-hmm: Collect and print HMM vs historical diagnostics at the end of the run.
- */
-function parseArgs() {
-    const args = process.argv.slice(2);
-    const fileArgs = args.filter((a) => !a.startsWith("-"));
-    const flags = args.filter((a) => a.startsWith("-"));
+// --- Main ---
 
-    // Select the base configuration strategy
-    let config = CONFIG_HIGHEST_YIELD;
-    if (flags.includes("--efficiency") || flags.includes("--eff") || flags.includes("-eff") || flags.includes("-e")) {
-        config = CONFIG_EFFICIENCY;
-    } else if (flags.includes("--yield") || flags.includes("-y")) {
-        config = CONFIG_HIGHEST_YIELD;
-    } else if (flags.includes("--bet2") || flags.includes("-b2")) {
-        config = CONFIG_BET2;
-    }
+const { prevFile, currFile, config, showConfigOnly } = parseBacktestArgs();
 
-    // Dynamic Weights Overrides: Allows fine-tuning the model's ensemble components
-    const historicalWeightMatch = args.find((a) => a.startsWith("--historical-weight="));
-    const hmmWeightMatch = args.find((a) => a.startsWith("--hmm-weight="));
-
-    if (historicalWeightMatch || hmmWeightMatch) {
-        config = { ...config };
-        if (historicalWeightMatch && historicalWeightMatch.includes("=") && historicalWeightMatch.split("=")[1]!.trim() !== "") {
-            const weight = parseFloat(historicalWeightMatch.split("=")[1]!);
-            if (!isNaN(weight)) {
-                config.scoreWeights = { ...config.scoreWeights, historical: weight };
-            }
-        }
-        if (hmmWeightMatch && hmmWeightMatch.includes("=") && hmmWeightMatch.split("=")[1]!.trim() !== "") {
-            const weight = parseFloat(hmmWeightMatch.split("=")[1]!);
-            if (!isNaN(weight)) {
-                config.scoreWeights = { ...config.scoreWeights, hmm: weight };
-            }
-        }
-    }
-
-    // Decision Logic Overrides: Affects how aggressive the model is
-    const minScoreMatch = args.find((a) => a.startsWith("--min-score="));
-    if (minScoreMatch && minScoreMatch.includes("=") && minScoreMatch.split("=")[1]!.trim() !== "") {
-        const threshold = parseFloat(minScoreMatch.split("=")[1]!);
-        if (!isNaN(threshold)) {
-            config = { ...config, minScoreThreshold: threshold };
-        }
-    }
-
-    const relativeMatch = args.find((a) => a.startsWith("--relative-threshold="));
-    if (relativeMatch && relativeMatch.includes("=") && relativeMatch.split("=")[1]!.trim() !== "") {
-        const threshold = parseFloat(relativeMatch.split("=")[1]!);
-        if (!isNaN(threshold)) {
-            config = { ...config, relativeThreshold: threshold };
-        }
-    }
-
-    const priorMatch = args.find((a) => a.startsWith("--prior-weight="));
-    if (priorMatch && priorMatch.includes("=") && priorMatch.split("=")[1]!.trim() !== "") {
-        const weight = parseFloat(priorMatch.split("=")[1]!);
-        if (!isNaN(weight)) {
-            config = { ...config, priorWeight: weight };
-        }
-    }
-
-    const hmmSmoothingMatch = args.find((a) => a.startsWith("--hmm-smoothing="));
-    if (hmmSmoothingMatch && hmmSmoothingMatch.includes("=") && hmmSmoothingMatch.split("=")[1]!.trim() !== "") {
-        const smoothing = parseFloat(hmmSmoothingMatch.split("=")[1]!);
-        if (!isNaN(smoothing)) {
-            config = { ...config, hmmSmoothing: smoothing };
-        }
-    }
-
-    const chunkSizeMatch = args.find((a) => a.startsWith("--chunk-size="));
-    if (chunkSizeMatch && chunkSizeMatch.includes("=") && chunkSizeMatch.split("=")[1]!.trim() !== "") {
-        const chunkSize = parseInt(chunkSizeMatch.split("=")[1]!, 10);
-        if (!isNaN(chunkSize) && chunkSize > 0) {
-            config = { ...config, chunkSize: chunkSize };
-        }
-    }
-
-    const restartsMatch = args.find((a) => a.startsWith("--restarts="));
-    if (restartsMatch && restartsMatch.includes("=") && restartsMatch.split("=")[1]!.trim() !== "") {
-        const restarts = parseInt(restartsMatch.split("=")[1]!, 10);
-        if (!isNaN(restarts) && restarts > 0) {
-            config = { ...config, trainingRestarts: restarts };
-        }
-    }
-
-    if (flags.includes("--diagnose-hmm")) {
-        config = { ...config, diagnoseHmm: true };
-    }
-
-    return {
-        prevFile: fileArgs[0],
-        currFile: fileArgs[1],
-        config,
-        showConfigOnly: flags.includes("--print-config-only") || flags.includes("-pco"),
-    };
-}
-
-// Main Process Flow
-const { prevFile, currFile, config, showConfigOnly } = parseArgs();
-
-// Feature: Export configuration with calculated win rates for use in other tools or debugging
 if (showConfigOnly) {
     const previousMonthsRaces = await loadRaces(prevFile);
     if (previousMonthsRaces.length > 0) {
@@ -551,11 +235,11 @@ if (showConfigOnly) {
     process.exit(0);
 }
 
-// Mandatory file check for standard backtest run
 if (!prevFile || !currFile) {
-    console.error("Usage: bun backtest.ts <previous_month_data> <current_month_data> [--efficiency|--yield|--bet2] [overrides...]");
+    console.error(
+        "Usage: bun backtest.ts <previous_month_data> <current_month_data> [--efficiency|--yield|--bet2] [overrides...]",
+    );
     process.exit(1);
 }
 
-// Initiate the simulation
 runBacktest(prevFile, currFile, config).catch(console.error);
