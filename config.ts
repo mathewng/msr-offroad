@@ -24,8 +24,9 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     // Number of hidden states in the HMM. 8 states has been tested to be optimal.
     hmmStates: 6,
 
-    // Observation space size: 6 slots * 3 payout buckets (Favored, Neutral, Longshot) = 18.
-    hmmObservations: 18,
+    // Observation space: round (1–3) × 6 slots × 3 buckets = 54.
+    // Encoding: (round - 1) * 18 + (slot - 1) * 3 + bucket. Gives HMM round-specific structure.
+    hmmObservations: 54,
 
     // Number of races to process in a single walk-forward training window.
     // Races are done 3 at a time, so this is 3 races per chunk.
@@ -48,7 +49,7 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
 
     // Laplace smoothing constant for HMM re-estimation.
     // Prevents zero-probability transitions and improves generalization.
-    hmmSmoothing: 1e-20,
+    hmmSmoothing: 1e-4,
 };
 
 /**
@@ -60,7 +61,6 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
 export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
     ...BASE_CONFIG,
 
-    chunkSize: 6,
 
     betLimit: 3,
 
@@ -68,8 +68,8 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
         // baseline to beat
         // historical: 1,
         // hmm: 0,
-        historical: 0.81,
-        hmm: 0.19,
+        historical: 0.5,
+        hmm: 0.5,
         momentum: 0,
         zigZag: 0,
     },

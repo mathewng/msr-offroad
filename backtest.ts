@@ -9,7 +9,7 @@
 import { CONFIG_BET2, CONFIG_EFFICIENCY, CONFIG_HIGHEST_YIELD } from "./config";
 import { calculateEmpiricalWinRates } from "./utils";
 import { predictRace } from "./prediction-engine";
-import type { BacktestConfig, Race } from "./types";
+import type { BacktestConfig, Race, HmmDiagnostics } from "./types";
 import { calculateStats, formatCurrency, getPayoutBucket, parseLines, updateStats } from "./utils";
 import { WorkerPool } from "./worker-pool";
 
@@ -121,6 +121,114 @@ class ResultPrinter {
 }
 
 /**
+ * Helper: index of max value in array (0-based). Ties break to first.
+ */
+function argMax(arr: number[]): number {
+    let best = 0;
+    for (let i = 1; i < arr.length; i++) {
+        if (arr[i]! > arr[best]!) best = i;
+    }
+    return best;
+}
+
+/**
+ * Entropy of a discrete distribution (natural log). Uses 0 for 0*log(0).
+ */
+function entropy(probs: number[]): number {
+    let h = 0;
+    for (const p of probs) {
+        if (p > 0) h -= p * Math.log(p);
+    }
+    return h;
+}
+
+/**
+ * Sample standard deviation.
+ */
+function sampleStd(values: number[], mean: number): number {
+    if (values.length < 2) return 0;
+    const variance = values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (values.length - 1);
+    return Math.sqrt(variance);
+}
+
+/**
+ * Prints HMM vs historical diagnostics to see if the HMM is discriminating.
+ * - HMM max-prob stats and entropy (flat vs peaked)
+ * - Histogram of max HMM prob
+ * - Agreement between HMM top slot and historical top slot
+ * - When outcome is known: how often HMM top vs historical top matched the winner
+ */
+function printHmmDiagnostics(samples: (HmmDiagnostics & { winningSlot: number | null })[]): void {
+    const N = samples.length;
+    const maxHmmProbs: number[] = [];
+    const maxHistRates: number[] = [];
+    const entropies: number[] = [];
+    let agreementCount = 0;
+    let withOutcome = 0;
+    let hmmTopCorrect = 0;
+    let histTopCorrect = 0;
+
+    const BINS = [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 1];
+    const numBins = BINS.length - 1;
+    const binCounts = new Array(numBins).fill(0);
+
+    for (const { hmmSlotProbs, histWinRates, winningSlot } of samples) {
+        const maxHmm = Math.max(...hmmSlotProbs);
+        const maxHist = Math.max(...histWinRates);
+        const topHmmSlot = argMax(hmmSlotProbs) + 1;
+        const topHistSlot = argMax(histWinRates) + 1;
+
+        maxHmmProbs.push(maxHmm);
+        maxHistRates.push(maxHist);
+        entropies.push(entropy(hmmSlotProbs));
+
+        if (topHmmSlot === topHistSlot) agreementCount++;
+
+        if (winningSlot !== null) {
+            withOutcome++;
+            if (topHmmSlot === winningSlot) hmmTopCorrect++;
+            if (topHistSlot === winningSlot) histTopCorrect++;
+        }
+
+        let bi = 0;
+        while (bi < numBins - 1 && maxHmm >= BINS[bi + 1]!) bi++;
+        binCounts[bi]++;
+    }
+
+    const meanMaxHmm = maxHmmProbs.reduce((a, b) => a + b, 0) / N;
+    const stdMaxHmm = sampleStd(maxHmmProbs, meanMaxHmm);
+    const meanEntropy = entropies.reduce((a, b) => a + b, 0) / N;
+    const uniformEntropy = Math.log(6); // max entropy for 6 outcomes
+
+    console.log("\n" + "=".repeat(60));
+    console.log("HMM DIAGNOSTICS");
+    console.log("=".repeat(60));
+    console.log(`Races with diagnostics: ${N}`);
+    console.log("");
+    console.log("HMM slot-probability distribution:");
+    console.log(`  Max prob per race: mean = ${meanMaxHmm.toFixed(4)}, std = ${stdMaxHmm.toFixed(4)}`);
+    console.log(`  (Uniform would give mean ≈ ${(1 / 6).toFixed(4)}; higher mean = more discriminating)`);
+    console.log(`  Entropy (mean): ${meanEntropy.toFixed(4)} (uniform = ${uniformEntropy.toFixed(4)}; lower = more peaked)`);
+    console.log("");
+    console.log("Histogram of max HMM prob (per race):");
+    for (let i = 0; i < numBins; i++) {
+        const label = `[${BINS[i]!.toFixed(2)} - ${BINS[i + 1]!.toFixed(2)})`;
+        const bar = "#".repeat(Math.min(40, binCounts[i]!));
+        console.log(`  ${label.padEnd(14)} ${binCounts[i]!.toString().padStart(4)} ${bar}`);
+    }
+    console.log("");
+    console.log("HMM vs Historical agreement (same top slot):");
+    console.log(`  ${agreementCount} / ${N} (${((agreementCount / N) * 100).toFixed(1)}%)`);
+    console.log("");
+    if (withOutcome > 0) {
+        console.log("When outcome known (top-slot accuracy):");
+        console.log(`  HMM top slot was winner:  ${hmmTopCorrect} / ${withOutcome} (${((hmmTopCorrect / withOutcome) * 100).toFixed(1)}%)`);
+        console.log(`  Historical top was winner: ${histTopCorrect} / ${withOutcome} (${((histTopCorrect / withOutcome) * 100).toFixed(1)}%)`);
+    }
+    console.log("=".repeat(60));
+}
+
+/**
  * The core backtest execution engine.
  * Implements "Walk-Forward" simulation to accurately reflect real-world performance.
  *
@@ -147,7 +255,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
 
     // Dynamic configuration update: Calculate empirical win rates from the historical data provided
     // This allows the model to adapt its priors based on the specific historical dataset.
-    config.empiricalWinRates = calculateEmpiricalWinRates(previousMonthsRaces);
+    config.empiricalWinRates = calculateEmpiricalWinRates(previousMonthsRaces);    
 
     // Initialize the worker pool for parallel HMM training (ensemble approach)
     const pool = new WorkerPool(config.maxWorkers, "./hmm-worker.ts");
@@ -161,13 +269,16 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
     };
 
     /**
-     * HMM Observation Sequence Encoding:
-     * Observations are mapped to a single integer representing (slot * payout_bucket).
-     * Format: (winning_slot_index [0-5] * 3) + payout_bucket [0-2]
-     * This captures the dependency between the winning slot and its payout magnitude.
-     * Uses -1 to represent missing data in the sequence.
+     * HMM Observation Sequence Encoding (expanded alphabet with round):
+     * Observation = (round - 1) * 18 + (slot - 1) * 3 + bucket.
+     * 3 rounds × 6 slots × 3 buckets = 54 symbols. Uses -1 for missing data.
      */
-    let sequence = history.map((r) => (r.winningSlot !== null && r.winningPayout !== null ? (r.winningSlot - 1) * 3 + getPayoutBucket(r.winningPayout, r.winningSlot) : -1));
+    const OBS_PER_CONTEXT = 18; // 6 slots × 3 buckets
+    let sequence = history.map((r) => {
+        if (r.winningSlot === null || r.winningPayout === null) return -1;
+        const bucket = getPayoutBucket(r.winningPayout, r.winningSlot);
+        return (r.raceNumber - 1) * OBS_PER_CONTEXT + (r.winningSlot - 1) * 3 + bucket;
+    });
 
     /**
      * Mechanical Sympathy (Performance Optimization):
@@ -184,6 +295,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
 
     // Initial statistical baseline from the historical set
     let currentStats = calculateStats(history, config);
+    const diagnosticSamples: (HmmDiagnostics & { winningSlot: number | null })[] = [];
     console.log(`Loaded history: ${history.length}, Target: ${currentMonthRaces.length}. Using ${config.maxWorkers} cores.`);
     ResultPrinter.printHeader();
 
@@ -252,7 +364,10 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
             }
 
             // Combine HMM probabilities with historical statistics to determine bets
-            const { bets, score } = predictRace(currentRace, currentStats, aggregatedProbs, config);
+            const { bets, score, diagnostics } = predictRace(currentRace, currentStats, aggregatedProbs, config);
+            if (config.diagnoseHmm && diagnostics) {
+                diagnosticSamples.push({ ...diagnostics, winningSlot: currentRace.winningSlot ?? null });
+            }
             const isPending = currentRace.winningSlot === null;
             let raceProfit = 0;
             let raceWins = 0;
@@ -288,7 +403,8 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
             // Walk-forward Step: Update the model's history and statistics after EACH race
             // This ensures the NEXT race prediction has access to the result of the CURRENT race.
             if (!isPending) {
-                sequence.push((currentRace.winningSlot! - 1) * 3 + getPayoutBucket(currentRace.winningPayout!, currentRace.winningSlot!));
+                const bucket = getPayoutBucket(currentRace.winningPayout!, currentRace.winningSlot!);
+                sequence.push((currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket);
                 updateStats(currentStats, currentRace, config);
             } else {
                 sequence.push(-1); // Maintain temporal sequence even if result is unknown
@@ -299,6 +415,9 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
 
     pool.terminate();
     ResultPrinter.printSummary(stats);
+    if (config.diagnoseHmm && diagnosticSamples.length > 0) {
+        printHmmDiagnostics(diagnosticSamples);
+    }
 }
 
 /**
@@ -323,6 +442,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
  * --chunk-size=<val>: How many races to process before HMM retraining.
  * --restarts=<val>: Number of HMM training sessions per model.
  * --print-config-only: Calculate empirical win rates and exit after printing the config.
+ * --diagnose-hmm: Collect and print HMM vs historical diagnostics at the end of the run.
  */
 function parseArgs() {
     const args = process.argv.slice(2);
@@ -420,6 +540,10 @@ function parseArgs() {
         if (!isNaN(restarts) && restarts > 0) {
             config = { ...config, trainingRestarts: restarts };
         }
+    }
+
+    if (flags.includes("--diagnose-hmm")) {
+        config = { ...config, diagnoseHmm: true };
     }
 
     return {

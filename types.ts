@@ -77,7 +77,7 @@ export interface BacktestConfig {
     convergenceTolerance: number; // Log-likelihood delta threshold for early stopping
     maxWorkers: number; // Degree of parallelism for worker threads
     hmmStates: number; // Number of hidden states (latent variables) in the HMM
-    hmmObservations: number; // Cardinality of the observation space (e.g., 18 = 6 slots * 3 buckets)
+    hmmObservations: number; // Observation space size (e.g. 54 = 3 rounds × 6 slots × 3 buckets)
     chunkSize: number; // The "Walk-Forward" window size for retraining models
     scoreWeights: {
         historical: number; // Weight for historical statistical EV (0.0 to 1.0)
@@ -90,4 +90,17 @@ export interface BacktestConfig {
     empiricalWinRates?: Record<number, number>; // Baseline win rates for each slot (1-6)
     priorWeight?: number; // The strength of the prior (virtual observations) for Laplace smoothing
     hmmSmoothing?: number; // Laplace smoothing for HMM re-estimation
+    /** When true, prediction engine returns HMM vs historical diagnostics for analysis. */
+    diagnoseHmm?: boolean;
+}
+
+/**
+ * Per-race diagnostics comparing HMM slot probabilities to historical win rates.
+ * Used when diagnoseHmm is enabled to check if the HMM is discriminating.
+ */
+export interface HmmDiagnostics {
+    /** HMM probability for each slot (1–6), indices 0–5. */
+    hmmSlotProbs: number[];
+    /** Historical win rate for each slot (1–6), indices 0–5. */
+    histWinRates: number[];
 }
