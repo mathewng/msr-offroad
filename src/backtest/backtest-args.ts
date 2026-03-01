@@ -20,9 +20,9 @@ Positional:
   <target_data>      Path to target race data (test set)
 
 Strategy (pick one):
-  --efficiency, -e   Maximize ROI (single bet, selective)
-  --yield, -y        Maximize net profit (default, up to 3 bets)
-  --bet2, -b2        Up to 2 bets per race
+  --efficiency, -e, --eff   Maximize ROI (single bet, selective)
+  --yield, -y              Maximize net profit (default, up to 3 bets)
+  --bet2, -b2              Up to 2 bets per race
 
 Overrides:
   --historical-weight=<n>   Weight for historical stats (0–1)
@@ -33,6 +33,12 @@ Overrides:
   --hmm-smoothing=<n>       HMM re-estimation smoothing
   --chunk-size=<n>          Races per walk-forward chunk
   --restarts=<n>            HMM training restarts per model
+  --bet-limit=<n>           Max bets per race (1–6)
+  --ensemble-size=<n>       Number of HMM models in ensemble
+  --iterations=<n>          Max Baum-Welch iterations per model
+  --tolerance=<n>           Convergence tolerance for training
+  --workers=<n>             Parallel worker threads
+  --hmm-states=<n>          Number of HMM hidden states
 
 Other:
   --diagnose-hmm      Print HMM vs historical diagnostics at end
@@ -106,6 +112,42 @@ function applyOverrides(args: string[], config: BacktestConfig): BacktestConfig 
         if (!isNaN(v) && v > 0) c = { ...c, trainingRestarts: v };
     }
 
+    const betLimit = getFlagValue(args, "--bet-limit=");
+    if (betLimit !== undefined) {
+        const v = parseInt(betLimit, 10);
+        if (!isNaN(v) && v >= 1 && v <= 6) c = { ...c, betLimit: v };
+    }
+
+    const ensembleSize = getFlagValue(args, "--ensemble-size=");
+    if (ensembleSize !== undefined) {
+        const v = parseInt(ensembleSize, 10);
+        if (!isNaN(v) && v > 0) c = { ...c, ensembleSize: v };
+    }
+
+    const iterations = getFlagValue(args, "--iterations=");
+    if (iterations !== undefined) {
+        const v = parseInt(iterations, 10);
+        if (!isNaN(v) && v > 0) c = { ...c, trainingIterations: v };
+    }
+
+    const tolerance = getFlagValue(args, "--tolerance=");
+    if (tolerance !== undefined) {
+        const v = parseFloat(tolerance);
+        if (!isNaN(v) && v > 0) c = { ...c, convergenceTolerance: v };
+    }
+
+    const workers = getFlagValue(args, "--workers=");
+    if (workers !== undefined) {
+        const v = parseInt(workers, 10);
+        if (!isNaN(v) && v > 0) c = { ...c, maxWorkers: v };
+    }
+
+    const hmmStates = getFlagValue(args, "--hmm-states=");
+    if (hmmStates !== undefined) {
+        const v = parseInt(hmmStates, 10);
+        if (!isNaN(v) && v > 0) c = { ...c, hmmStates: v };
+    }
+
     if (hasAnyFlag(args, "--diagnose-hmm")) {
         c = { ...c, diagnoseHmm: true };
     }
@@ -119,7 +161,8 @@ function applyOverrides(args: string[], config: BacktestConfig): BacktestConfig 
  * Positional: 1) historical data file, 2) target data file.
  * Flags: --efficiency|--yield|--bet2, --historical-weight=, --hmm-weight=,
  * --min-score=, --relative-threshold=, --prior-weight=, --hmm-smoothing=,
- * --chunk-size=, --restarts=, --print-config-only, --diagnose-hmm.
+ * --chunk-size=, --restarts=, --bet-limit=, --ensemble-size=, --iterations=,
+ * --tolerance=, --workers=, --hmm-states=, --print-config-only, --diagnose-hmm.
  */
 export function parseBacktestArgs(): ParsedBacktestArgs {
     const args = process.argv.slice(2);
