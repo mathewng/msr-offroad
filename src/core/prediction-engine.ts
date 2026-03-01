@@ -11,7 +11,7 @@ import { getPayoutBucket, EQUAL_SLOT_PROBABILITY } from "../shared/utils";
  * 1. For each of the 6 slots:
  *    a. Map the current race's payout to a bucket (Favored, Neutral, Longshot).
  *    b. Retrieve historical win rates for that slot + bucket.
- *    c. Blend in Venue and Round-specific performance if available.
+ *    c. Blend in Round-specific performance if available.
  *    d. Calculate Historical Expected Value (EV).
  *    e. Estimate HMM-based EV using the transition probabilities for the next state.
  *    f. Combine both EV scores using configurable weights.
@@ -47,26 +47,19 @@ export function predictRace(
     for (let s = 0; s < 6; s++) {
         const slot = s + 1;
         const payout = currentRace.payouts[s] ?? 0;
-        const bucket = getPayoutBucket(payout, slot);
+        const bucket = getPayoutBucket(payout);
         const hmmProb = hmmSlotProbs[s] ?? 0;
 
         // Retrieve multidimensional statistics
         const bStat = stats.bucketMap[slot]?.[bucket];
-        const vStat = currentRace.venue ? stats.venueMap[currentRace.venue]?.[slot] : undefined;
         const rStat = stats.roundMap[currentRace.raceNumber]?.[slot];
 
         // Start with the base win rate for this slot in this payout bucket
         // Fallback to the empirical prior from config for this slot if no bucket-specific data exists
         let winRate = bStat?.winRate ?? config.empiricalWinRates?.[slot] ?? EQUAL_SLOT_PROBABILITY;
 
-        // Blend in Venue context (20% weight) if we have enough samples.
-        // A low threshold (2) is used to allow the model to start adapting to venue-specific
-        // trends as soon as they emerge in the walk-forward window.
-        if (vStat && vStat.occurrences >= 2) {
-            winRate = winRate * 0 + vStat.winRate * 1;
-        }
-        // Blend in Round context (15% weight) if we have enough samples.
-        // Similar to venue, a threshold of 2 captures early round-specific momentum.
+        // Blend in Round context (25% weight) if we have enough samples.
+        // A threshold of 2 captures early round-specific momentum.
         if (rStat && rStat.occurrences >= 2) {
             winRate = winRate * 0.75 + rStat.winRate * 0.25;
         }

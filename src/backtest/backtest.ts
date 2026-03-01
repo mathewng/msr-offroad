@@ -38,7 +38,7 @@ export async function loadRaces(filePath: string | undefined): Promise<Race[]> {
 function buildInitialSequence(history: Race[]): number[] {
     return history.map((r) => {
         if (r.winningSlot === null || r.winningPayout === null) return -1;
-        const bucket = getPayoutBucket(r.winningPayout, r.winningSlot);
+        const bucket = getPayoutBucket(r.winningPayout);
         return (r.raceNumber - 1) * OBS_PER_CONTEXT + (r.winningSlot - 1) * 3 + bucket;
     });
 }
@@ -204,7 +204,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
             );
 
             if (!isPending) {
-                const bucket = getPayoutBucket(currentRace.winningPayout!, currentRace.winningSlot!);
+                const bucket = getPayoutBucket(currentRace.winningPayout!);
                 sequence.push(
                     (currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket,
                 );
