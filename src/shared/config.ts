@@ -21,7 +21,7 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     // Number of CPU cores to use for parallel training.
     maxWorkers: 10,
 
-    // Number of hidden states in the HMM. 8 states has been tested to be optimal.
+    // Number of hidden states in the HMM.
     hmmStates: 6,
 
     // Observation space: round (1–3) × 6 slots × 3 buckets = 54.

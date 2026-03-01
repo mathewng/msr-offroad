@@ -22,7 +22,7 @@ export function argMax(arr: number[]): number {
  */
 export function parseLines(lines: string[]): Race[] {
     let currentDay = 1;
-    let lastVenue = "";
+    let lastVenue = "?";
     let lastTime: RaceTime = "12:00";
     const races: Race[] = [];
 
@@ -37,7 +37,10 @@ export function parseLines(lines: string[]): Race[] {
 
         // Basic validation for the expected number of columns
         if (parts.length >= 13) {
-            const venue = parts[0]?.trim();
+            if (!parts[1]?.trim()) continue;
+            if (!parts[2]?.trim()) continue;
+
+            const venue = parts[0]?.trim() ?? lastVenue ?? '?';
             const timeStr = parts[1]?.trim();
             const roundStr = parts[2]?.trim();
             const roundNum = parseInt(roundStr || "");
