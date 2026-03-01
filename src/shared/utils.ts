@@ -88,13 +88,13 @@ export function parseLines(lines: string[]): Race[] {
  * This ensures that Bucket 0 always represents a "strong" (low payout) version of that lane,
  * and Bucket 2 represents a "weak" (high payout) version, regardless of overlapping global ranges.
  */
-export function getPayoutBucket(payout: number, slot: number): number {
-    // These thresholds (5.5, 9.6) are derived from empirical analysis of the historical
+export function getPayoutBucket(payout: number): number {
+    // These thresholds (5,8) are derived from empirical analysis of the historical
     // dataset to categorize payouts into roughly equal-frequency buckets:
-    // Bucket 0 (<= 5.5): Favored / Strong lane
-    // Bucket 1 (5.6 - 9.6): Neutral / Mid-range
-    // Bucket 2 (> 9.6): Longshot / Weak lane
-    const [low, high] = [5.5, 9.6];
+    // Bucket 0 (<= 5): Favored / Strong lane
+    // Bucket 1 (5 - 8): Neutral / Mid-range
+    // Bucket 2 (> 8): Longshot / Weak lane
+    const [low, high] = [5, 8];
 
     if (payout <= low) return 0;
     if (payout <= high) return 1;
@@ -147,7 +147,7 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
             if (s === winningSlot) slotMap[s]!.wins++;
 
             const payout = r.payouts[s - 1] ?? 0;
-            const bucket = getPayoutBucket(payout, s);
+            const bucket = getPayoutBucket(payout);
             bucketMap[s]![bucket]!.occurrences++;
             if (s === winningSlot) bucketMap[s]![bucket]!.wins++;
 
@@ -261,7 +261,7 @@ export function updateStats(stats: StatsResult, r: Race, config: BacktestConfig)
 
         // Update Bucket Stats
         const payout = r.payouts[s - 1] ?? 0;
-        const bucket = getPayoutBucket(payout, s);
+        const bucket = getPayoutBucket(payout);
         const bStat = stats.bucketMap[s]![bucket]!;
         bStat.occurrences++;
         if (s === winningSlot) bStat.wins++;

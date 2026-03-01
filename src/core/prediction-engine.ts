@@ -63,12 +63,12 @@ export function predictRace(
         // A low threshold (2) is used to allow the model to start adapting to venue-specific
         // trends as soon as they emerge in the walk-forward window.
         if (vStat && vStat.occurrences >= 2) {
-            winRate = winRate * 0.8 + vStat.winRate * 0.2;
+            winRate = winRate * 0 + vStat.winRate * 1;
         }
         // Blend in Round context (15% weight) if we have enough samples.
         // Similar to venue, a threshold of 2 captures early round-specific momentum.
         if (rStat && rStat.occurrences >= 2) {
-            winRate = winRate * 0.85 + rStat.winRate * 0.15;
+            winRate = winRate * 0.75 + rStat.winRate * 0.25;
         }
 
         /**

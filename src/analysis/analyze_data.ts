@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { parseLines } from "../shared/utils";
 
-const data = fs.readFileSync("data_historical.txt", "utf-8");
+const data = fs.readFileSync("data_all.txt", "utf-8");
 const lines = data.split(/\r?\n/);
 const races = parseLines(lines);
 

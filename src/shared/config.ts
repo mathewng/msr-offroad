@@ -19,7 +19,7 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     convergenceTolerance: 5e-3,
 
     // Number of CPU cores to use for parallel training.
-    maxWorkers: 4,
+    maxWorkers: 10,
 
     // Number of hidden states in the HMM. 8 states has been tested to be optimal.
     hmmStates: 6,
@@ -31,7 +31,7 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     // Number of races to process in a single walk-forward training window.
     // Races are done 3 at a time, so this is 3 races per chunk.
     // The payouts for the next 3 races are also released at the same time.
-    chunkSize: 3,
+    chunkSize: 1,
 
     // Default baseline win rates. These are fallback values.
     empiricalWinRates: {
@@ -61,7 +61,6 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
 export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
     ...BASE_CONFIG,
 
-
     betLimit: 3,
 
     scoreWeights: {
@@ -80,7 +79,6 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
 export const CONFIG_BET2: BacktestConfig = {
     ...BASE_CONFIG,
 
-    chunkSize: 2,
 
     betLimit: 2,
 
@@ -103,7 +101,6 @@ export const CONFIG_BET2: BacktestConfig = {
 export const CONFIG_EFFICIENCY: BacktestConfig = {
     ...BASE_CONFIG,
 
-    chunkSize: 6,
 
     betLimit: 1,
 
