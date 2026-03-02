@@ -64,8 +64,8 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
     betLimit: 3,
 
     scoreWeights: {
-        historical: 0.5,
-        hmm: 0.5,
+        historical: 0.81,
+        hmm: 0.19,
     },
 
     minScoreThreshold: 0,
@@ -78,7 +78,6 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
  */
 export const CONFIG_BET2: BacktestConfig = {
     ...BASE_CONFIG,
-
 
     betLimit: 2,
 
@@ -100,7 +99,6 @@ export const CONFIG_BET2: BacktestConfig = {
  */
 export const CONFIG_EFFICIENCY: BacktestConfig = {
     ...BASE_CONFIG,
-
 
     betLimit: 1,
 

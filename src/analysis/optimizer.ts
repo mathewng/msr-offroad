@@ -32,6 +32,7 @@ async function runBacktest(params: BacktestParams, highestProfit: number): Promi
         // no need to waste cpu cycles averaging..
         if (i === 0 && highestProfit - averageProfit > highestProfit * (1 / 3)) break;
         else if (i >= 1 && highestProfit - averageProfit > highestProfit * (1 / 6)) break;
+        if (highestProfit <= 0 || averageProfit <= 0) break;
 
         // if hmm is 0, the result is constant and does not vary
         // so a single run is enough
@@ -100,7 +101,7 @@ async function runSingleBacktest(params: BacktestParams): Promise<number> {
             }
 
             // Extract Profit value using regex pattern matching
-            const profitMatch = output.match(/Profit:\s+(\d+(\.\d+)?)?/);
+            const profitMatch = output.match(/Profit:\s+(-?\d+(\.\d+)?)?/);
             if (profitMatch === null) {
                 reject(new Error("Profit value not found in backtest output"));
                 return;

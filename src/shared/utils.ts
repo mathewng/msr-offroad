@@ -37,7 +37,6 @@ export function parseLines(lines: string[]): Race[] {
 
         // Basic validation for the expected number of columns
         if (parts.length >= 13) {
-            if (!parts[1]?.trim()) continue;
             if (!parts[2]?.trim()) continue;
 
             const venue = parts[0]?.trim() ?? lastVenue ?? '?';
