@@ -211,7 +211,7 @@ export class HMM {
     }
 
     /**
-     * High-level training method that supports multiple restarts.
+     * High-level training method that supports multiple restarts and optional warm starts.
      *
      * HMM training (Baum-Welch) is a local optimization process sensitive to
      * initial parameters. Running multiple training sessions with different
@@ -223,9 +223,17 @@ export class HMM {
      * @param restarts - Number of full training sessions to attempt (default: 3).
      * @param tolerance - Log-likelihood improvement threshold for early stopping.
      * @param smoothing - Laplace smoothing constant (pseudocount).
+     * @param seedParams - Optional parameters to use as a starting point (warm start).
      * @returns The final log-likelihood of the best model found.
      */
-    public train(observations: number[] | Int32Array, iterations: number = 100, restarts: number = 3, tolerance: number = 0, smoothing: number = 1e-6): number {
+    public train(
+        observations: number[] | Int32Array,
+        iterations: number = 100,
+        restarts: number = 3,
+        tolerance: number = 0,
+        smoothing: number = 1e-6,
+        seedParams?: { A: Float64Array; B: Float64Array; pi: Float64Array },
+    ): number {
         const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
 
         let bestLogLikelihood = -Infinity;
@@ -235,9 +243,13 @@ export class HMM {
 
         for (let r = 0; r < restarts; r++) {
             // 1. Initialize parameters for this restart
-            if (r > 0) {
-                // If we've already initialized from data once, reuse that logic but
-                // it will generate different random perturbations for each restart.
+            if (r === 0 && seedParams) {
+                // Warm start: use provided parameters as a baseline
+                this.setParameters(seedParams);
+                // Add slight perturbation to ensure we explore around the seed
+                this.perturb(0.05);
+            } else {
+                // Cold start or subsequent restart: initialize from data distribution
                 this.initializeFromData(obs);
             }
 
@@ -259,7 +271,126 @@ export class HMM {
         this.pi.set(bestPi);
         this.updateTransposedA();
 
+        // Ensure states are consistently ordered to prevent label switching
+        this.sortStates();
+
         return bestLogLikelihood;
+    }
+
+    /**
+     * Adds a small amount of random noise to all parameters and re-normalizes.
+     * Useful for escaping local optima during warm starts.
+     */
+    private perturb(amount: number): void {
+        const N = this.numStates;
+        const M = this.numObservations;
+
+        const perturbArr = (arr: Float64Array, rowSize: number) => {
+            const numRows = Math.floor(arr.length / rowSize);
+            for (let i = 0; i < numRows; i++) {
+                const off = i * rowSize;
+                let sum = 0;
+                for (let j = 0; j < rowSize; j++) {
+                    const val = arr[off + j]! * (1.0 + (rng.next() - 0.5) * amount * 2.0) + 1e-10;
+                    arr[off + j] = val;
+                    sum += val;
+                }
+                const invSum = 1.0 / sum;
+                for (let j = 0; j < rowSize; j++) arr[off + j]! *= invSum;
+            }
+        };
+
+        perturbArr(this.pi, N);
+        perturbArr(this.A, N);
+        perturbArr(this.B, M);
+        this.updateTransposedA();
+    }
+
+    /**
+     * Reorders hidden states according to a canonical metric (Bucket 0 emission probability).
+     *
+     * This addresses the "Label Switching" problem where functionally identical states
+     * are assigned arbitrary indices in different training sessions or across an ensemble.
+     * By sorting states so that State 0 always represents the same market behavior
+     * (e.g. the one where favored slots win most often), we stabilize the consensusRegime.
+     */
+    public sortStates(): void {
+        const N = this.numStates;
+        const M = this.numObservations;
+
+        // 1. Calculate the sorting metric for each state.
+        // Metric: Sum of emission probabilities for all "Bucket 0" outcomes.
+        // In the encoding (round-1)*18 + (slot-1)*3 + bucket, Bucket 0 corresponds to k % 3 == 0.
+        const metrics = new Array(N).fill(0).map((_, i) => {
+            let sum = 0;
+            const iOff = i * M;
+            for (let k = 0; k < M; k += 3) {
+                sum += this.B[iOff + k]!;
+            }
+            return { index: i, value: sum };
+        });
+
+        // 2. Determine the new order (descending by Bucket 0 probability)
+        metrics.sort((a, b) => b.value - a.value);
+        const newOrder = metrics.map((m) => m.index);
+
+        // 3. Apply the permutation if it's not already sorted
+        let isSorted = true;
+        for (let i = 0; i < N; i++) {
+            if (newOrder[i] !== i) {
+                isSorted = false;
+                break;
+            }
+        }
+        if (isSorted) return;
+
+        const oldA = new Float64Array(this.A);
+        const oldB = new Float64Array(this.B);
+        const oldPi = new Float64Array(this.pi);
+
+        for (let i = 0; i < N; i++) {
+            const newIdx = i;
+            const oldIdx = newOrder[i]!;
+
+            // Update pi
+            this.pi[newIdx] = oldPi[oldIdx]!;
+
+            // Update B (Emission)
+            const newOffB = newIdx * M;
+            const oldOffB = oldIdx * M;
+            this.B.set(oldB.subarray(oldOffB, oldOffB + M), newOffB);
+
+            // Update A (Transition)
+            for (let j = 0; j < N; j++) {
+                const newJndex = j;
+                const oldJndex = newOrder[j]!;
+                // P(new_state_j | new_state_i) = P(old_state_newOrder[j] | old_state_newOrder[i])
+                this.A[newIdx * N + newJndex] = oldA[oldIdx * N + oldJndex]!;
+            }
+        }
+
+        this.updateTransposedA();
+    }
+
+    /**
+     * Gets the current model parameters.
+     */
+    public getParameters() {
+        return {
+            A: new Float64Array(this.A),
+            B: new Float64Array(this.B),
+            pi: new Float64Array(this.pi),
+        };
+    }
+
+    /**
+     * Sets the model parameters and synchronizes the transposed version.
+     */
+    public setParameters(params: { A: Float64Array; B: Float64Array; pi: Float64Array }) {
+        this.A.set(params.A);
+        this.B.set(params.B);
+        this.pi.set(params.pi);
+        this.updateTransposedA();
     }
 
     /**

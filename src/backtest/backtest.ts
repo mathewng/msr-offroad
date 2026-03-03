@@ -143,7 +143,13 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
     const diagnosticSamples: DiagnosticSample[] = [];
     const invEnsembleSize = 1.0 / config.ensembleSize;
 
-    console.log(`Loaded history: ${history.length}, Target: ${currentMonthRaces.length}. Using ${config.maxWorkers} cores.`);
+    // Maintain ensemble parameters across chunks to support warm starting.
+    // This stabilizes state labels and improves convergence for incremental data.
+    const ensembleParams = new Array(config.ensembleSize).fill(undefined);
+
+    console.log(
+        `Loaded history: ${history.length}, Target: ${currentMonthRaces.length}. Using ${config.maxWorkers} cores.`,
+    );
     printHeader();
 
     for (let i = 0; i < currentMonthRaces.length; i += config.chunkSize) {
@@ -151,7 +157,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
         const currentSequenceView = sequenceArray.subarray(0, sequence.length);
         currentSequenceView.set(sequence);
 
-        const ensemblePromises = Array.from({ length: config.ensembleSize }, () =>
+        const ensemblePromises = Array.from({ length: config.ensembleSize }, (_, idx) =>
             pool.run({
                 sequence: currentSequenceView,
                 numStates: config.hmmStates,
@@ -161,10 +167,17 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
                 tolerance: config.convergenceTolerance,
                 smoothing: config.hmmSmoothing,
                 steps: chunk.length,
+                seedParams: ensembleParams[idx], // Warm start if available
             }),
         );
 
         const allEnsemblePredictions = await Promise.all(ensemblePromises);
+
+        // Update stored parameters for the next iteration's warm start
+        for (let idx = 0; idx < config.ensembleSize; idx++) {
+            ensembleParams[idx] = (allEnsemblePredictions[idx] as any).params;
+        }
+
         const consensusRegime = getConsensusRegime(allEnsemblePredictions);
 
         for (let j = 0; j < chunk.length; j++) {

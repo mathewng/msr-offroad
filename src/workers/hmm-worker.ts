@@ -20,18 +20,15 @@ declare var self: Worker;
  */
 self.onmessage = (event: MessageEvent) => {
     // sequence is an Int32Array (likely backed by SharedArrayBuffer)
-    const { id, sequence, numStates, numObservations, iterations, restarts, tolerance, smoothing, steps } = event.data;
+    const { id, sequence, numStates, numObservations, iterations, restarts, tolerance, smoothing, steps, seedParams } =
+        event.data;
 
     // 1. Initialize a new HMM with random parameters
     const hmm = new HMM(numStates, numObservations);
 
-    // 2. Seed with global frequencies + random noise to improve convergence
-    // while maintaining ensemble diversity.
-    hmm.initializeFromData(sequence);
-
-    // 3. Train the model using the Baum-Welch (EM) algorithm
-    // This is the primary CPU-intensive operation.
-    hmm.train(sequence, iterations, restarts, tolerance, smoothing);
+    // 2. Train the model using the Baum-Welch (EM) algorithm
+    // Note: train() now internally handles initialization (either from seed or from data)
+    hmm.train(sequence, iterations, restarts, tolerance, smoothing, seedParams);
 
     // 3. Predict the next 'steps' (usually chunk size) observation probabilities
     const results = hmm.predictSteps(sequence, steps);
@@ -40,6 +37,9 @@ self.onmessage = (event: MessageEvent) => {
     // This identifies the "regime" the system is currently in.
     const viterbiPath = hmm.viterbi(sequence);
 
-    // 5. Send the results back to the main thread
-    self.postMessage({ id, results, viterbiPath });
+    // 5. Get the final parameters to support warm starts in the next training round
+    const params = hmm.getParameters();
+
+    // 6. Send the results back to the main thread
+    self.postMessage({ id, results, viterbiPath, params });
 };
