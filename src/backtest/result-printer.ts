@@ -17,15 +17,14 @@ export interface BacktestStats {
     skippedRaces: number;
 }
 
-/** 126 characters wide for a standard terminal width. */
-const SEPARATOR = "-".repeat(126);
-
 /**
  * Table Columns:
- * Day | Venue | Time | R: Race Number | Bets: Slots | Act: Actual Winner
+ * Date | Time | Venue | R: Race Number | Bets: Slots | Act: Actual Winner
  * Pay: Actual Payout | Score: Model confidence | Win?: Outcome | Profit | Cumulative | Status | Mode
  */
-const HEADER = `${"Day".padStart(3)} | ${"Venue".padEnd(14)} | ${"Time".padEnd(5)} | R | ${"Mode".padStart(4)} | ${"Bets".padEnd(7)} | ${"Act".padStart(3)} | ${"Pay".padStart(4)} | ${"Score".padStart(6)} | ${"Win?".padEnd(4)} | ${"Profit".padStart(8)} | ${"Cumulative".padStart(10)} | ${"Status".padEnd(8)}`;
+const DATE_COL_WIDTH = 12; // "Fri, 30 Jan"
+const SEPARATOR = "-".repeat(135);
+const HEADER = `${"Date".padStart(DATE_COL_WIDTH)} | ${"Time".padEnd(5)} | ${"Venue".padEnd(14)} | R | ${"Mode".padStart(4)} | ${"Bets".padEnd(7)} | ${"Act".padStart(3)} | ${"Pay".padStart(4)} | ${"Score".padStart(6)} | ${"Win?".padEnd(4)} | ${"Profit".padStart(8)} | ${"Cumulative".padStart(10)} | ${"Status".padEnd(8)}`;
 
 export function printHeader(): void {
     console.log([SEPARATOR, HEADER, SEPARATOR].join("\n"));
@@ -55,8 +54,9 @@ export function printRow(
           ? "YES"
           : "NO";
 
+    const dateCol = (race.date ? race.date : `D${race.day}`).padStart(DATE_COL_WIDTH);
     console.log(
-        `${race.day.toString().padStart(3)} | ${(race.venue || "").padEnd(14)} | ${race.time.padEnd(5)} | ${race.raceNumber} | ${("S" + regime).padStart(4)} | ${betDisplay.padEnd(7)} | ${isPending ? "?".padStart(3) : winningSlot!.toString().padStart(3)} | ${isPending ? "?".padStart(4) : winningPayout!.toString().padStart(4)} | ${score.toFixed(2).padStart(6)} | ${winStatus.padEnd(4)} | ${isPending ? "-".padStart(8) : raceProfit.toFixed(2).padStart(8)} | ${totalProfit.toFixed(2).padStart(10)} | ${status.padEnd(8)}`,
+        `${dateCol} | ${race.time.padEnd(5)} | ${(race.venue || "").padEnd(14)} | ${race.raceNumber} | ${("S" + regime).padStart(4)} | ${betDisplay.padEnd(7)} | ${isPending ? "?".padStart(3) : winningSlot!.toString().padStart(3)} | ${isPending ? "?".padStart(4) : winningPayout!.toString().padStart(4)} | ${score.toFixed(2).padStart(6)} | ${winStatus.padEnd(4)} | ${isPending ? "-".padStart(8) : raceProfit.toFixed(2).padStart(8)} | ${totalProfit.toFixed(2).padStart(10)} | ${status.padEnd(8)}`,
     );
 }
 

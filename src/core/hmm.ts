@@ -224,6 +224,7 @@ export class HMM {
      * @param tolerance - Log-likelihood improvement threshold for early stopping.
      * @param smoothing - Laplace smoothing constant (pseudocount).
      * @param seedParams - Optional parameters to use as a starting point (warm start).
+     * @param perturbAmount - Scale factor for random perturbation when using seed (e.g. 0.2 = ±20%). Omitted uses 0.2.
      * @returns The final log-likelihood of the best model found.
      */
     public train(
@@ -233,6 +234,7 @@ export class HMM {
         tolerance: number = 0,
         smoothing: number = 1e-6,
         seedParams?: { A: Float64Array; B: Float64Array; pi: Float64Array },
+        perturbAmount: number = 0.2,
     ): number {
         const obs = observations instanceof Int32Array ? observations : new Int32Array(observations);
 
@@ -246,8 +248,8 @@ export class HMM {
             if (r === 0 && seedParams) {
                 // Warm start: use provided parameters as a baseline
                 this.setParameters(seedParams);
-                // Add slight perturbation to ensure we explore around the seed
-                this.perturb(0.05);
+                // Add perturbation to explore around the seed (amount from config)
+                this.perturb(perturbAmount);
             } else {
                 // Cold start or subsequent restart: initialize from data distribution
                 this.initializeFromData(obs);

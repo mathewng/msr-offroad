@@ -19,6 +19,8 @@ export interface Bet {
  */
 export interface Race {
     day: number; // Relative day number from the start of the dataset
+    /** Display date from source (e.g. "Friday, 30 January 2026"). Omitted in legacy data. */
+    date?: string;
     venue?: string; // Geographical/logical location for the race
     time: RaceTime; // Session time
     raceNumber: number; // Sequential round number (1, 2, or 3) within a session
@@ -26,6 +28,8 @@ export interface Race {
     bets: Bet[]; // List of bets made on this race
     winningSlot: number | null; // The slot that actually won (1-6)
     winningPayout: number | null; // The payout multiplier for the winner
+    /** Player/monster name per slot (1-6). Empty string = random human, non-empty = monster name. Omitted in old data. */
+    players?: (string | null)[];
 }
 
 /**
@@ -84,6 +88,8 @@ export interface BacktestConfig {
     empiricalWinRates?: Record<number, number>; // Baseline win rates for each slot (1-6)
     priorWeight?: number; // The strength of the prior (virtual observations) for Laplace smoothing
     hmmSmoothing?: number; // Laplace smoothing for HMM re-estimation
+    /** Warm-start perturbation: scale factor for random noise on seed params (e.g. 0.2 = ±20%). */
+    perturbAmount?: number;
     /** When true, prediction engine returns HMM vs historical diagnostics for analysis. */
     diagnoseHmm?: boolean;
 }

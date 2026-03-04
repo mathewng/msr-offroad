@@ -13,16 +13,16 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     trainingIterations: 10_000,
 
     // Number of HMM training sessions with different initializations per model.
-    trainingRestarts: 3,
+    trainingRestarts: 8,
 
     // Convergence cutoff for training. Smaller values yield more precise fits but take longer.
-    convergenceTolerance: 5e-3,
+    convergenceTolerance: 1e-3,
 
     // Number of CPU cores to use for parallel training.
-    maxWorkers: 10,
+    maxWorkers: 4,
 
     // Number of hidden states in the HMM.
-    hmmStates: 6,
+    hmmStates: 7,
 
     // Observation space: round (1–3) × 6 slots × 3 buckets = 54.
     // Encoding: (round - 1) * 18 + (slot - 1) * 3 + bucket. Gives HMM round-specific structure.
@@ -50,6 +50,9 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     // Laplace smoothing constant for HMM re-estimation.
     // Prevents zero-probability transitions and improves generalization.
     hmmSmoothing: 1e-4,
+
+    // Warm-start perturbation: when using seed params, scale factor for random noise (e.g. 0.2 = ±20%).
+    perturbAmount: 0.2,
 };
 
 /**
@@ -70,6 +73,8 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
 
     minScoreThreshold: 0,
     relativeThreshold: 0,
+
+    useMonsterHumanStats: false,
 };
 
 /**

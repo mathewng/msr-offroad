@@ -2,6 +2,23 @@ import type { BucketStat, Race, RaceTime, SlotStat, StatsResult, BacktestConfig 
 
 export const EQUAL_SLOT_PROBABILITY = 1 / 6;
 
+/**
+ * Formats a date string from the data file (e.g. "Friday, 30 January 2026") to "Fri, 30 Jan".
+ * Returns the original string if parsing fails.
+ */
+export function formatRaceDate(dateStr: string): string {
+    const trimmed = dateStr.trim();
+    if (!trimmed) return trimmed;
+    // Strip leading "Weekday, " so we can parse "30 January 2026"
+    const withoutWeekday = trimmed.replace(/^[^,]+,?\s*/i, "").trim();
+    const d = new Date(withoutWeekday);
+    if (Number.isNaN(d.getTime())) return trimmed;
+    const weekday = d.toLocaleDateString("en-GB", { weekday: "short" });
+    const day = d.getDate();
+    const month = d.toLocaleDateString("en-GB", { month: "short" });
+    return `${weekday}, ${day} ${month}`;
+}
+
 /** Index of max value in array (0-based). Ties break to first. */
 export function argMax(arr: number[]): number {
     let best = 0;
@@ -14,11 +31,15 @@ export function argMax(arr: number[]): number {
 /**
  * Parses raw lines from a data file into an array of Race objects.
  *
- * Expectations:
- * - Tab-separated values.
- * - Columns: [Venue] [Time] [Round] [W1] [W2] [W3] [W4] [W5] [W6] [Empty] [P1] [P2] [P3] [P4] [P5] [P6]
- * - W1-W6 are binary win indicators (1 for winner, 0 otherwise).
- * - P1-P6 are the payout multipliers for each slot.
+ * Supports two formats:
+ *
+ * New format (with optional header row):
+ * - Tab-separated. Columns: Date, Time, Venue, Round, Payout1..Payout6, Player1..Player6, Win1..Win6.
+ * - Win1-Win6: "1" = slot won, blank = didn't win, "?" = no data.
+ * - Player1-Player6: blank = random human, non-blank = monster name.
+ *
+ * Legacy format (no header):
+ * - Columns: Venue, Time, Round, W1..W6, Empty, P1..P6. W1-W6 = win (1/0), P1-P6 = payouts.
  */
 export function parseLines(lines: string[]): Race[] {
     let currentDay = 1;
@@ -26,7 +47,6 @@ export function parseLines(lines: string[]): Race[] {
     let lastTime: RaceTime = "12:00";
     const races: Race[] = [];
 
-    // Pre-allocate arrays to reduce allocations
     const winIndicators = new Array(6);
     const payouts = new Array(6);
 
@@ -35,38 +55,87 @@ export function parseLines(lines: string[]): Race[] {
 
         const parts = line.split("\t");
 
-        // Basic validation for the expected number of columns
-        if (parts.length >= 13) {
-            if (!parts[2]?.trim()) continue;
+        // Skip header row (new format)
+        if (parts[0]?.trim() === "Date" && parts[2]?.trim() === "Venue") continue;
 
-            const venue = parts[0]?.trim() ?? lastVenue ?? '?';
+        // New format: Date, Time, Venue, Round, Payout1-6, Player1-6, Win1-6 (22 columns)
+        if (parts.length >= 22) {
+            const venueStr = parts[2]?.trim();
             const timeStr = parts[1]?.trim();
-            const roundStr = parts[2]?.trim();
-            const roundNum = parseInt(roundStr || "");
-
+            const roundStr = parts[3]?.trim();
+            const roundNum = parseInt(roundStr || "", 10);
             if (isNaN(roundNum)) continue;
 
-            if (venue) lastVenue = venue;
+            const venue = venueStr || lastVenue || "?";
+            if (venueStr) lastVenue = venue;
             if (timeStr) {
                 const normalizedTime = timeStr as RaceTime;
-                // Detect day transition: if time rolls back from evening to morning, increment day count
                 if ((lastTime === "18:00" || lastTime === "6pm") && (normalizedTime === "12:00" || normalizedTime === "12pm")) {
                     currentDay++;
                 }
                 lastTime = normalizedTime;
             }
 
-            // Reuse arrays instead of creating new ones
+            for (let i = 0; i < 6; i++) {
+                const payPart = parts[4 + i]?.trim();
+                const playerPart = parts[10 + i]?.trim();
+                const winPart = parts[16 + i]?.trim();
+                payouts[i] = payPart === "?" ? NaN : parseFloat(payPart || "0");
+                winIndicators[i] = winPart === "?" ? NaN : winPart === "1" ? 1 : 0;
+            }
+
+            const winningIndex = winIndicators.findIndex((n) => n === 1);
+            const winningSlot = winningIndex !== -1 ? winningIndex + 1 : null;
+            const winningPayout = winningIndex !== -1 ? payouts[winningIndex] : null;
+
+            const players: (string | null)[] = [];
+            for (let i = 0; i < 6; i++) {
+                const p = parts[10 + i]?.trim();
+                players.push(!p ? null : p); // blank = random human (null), else monster name
+            }
+
+            const rawDate = parts[0]?.trim();
+            races.push({
+                day: currentDay,
+                date: rawDate ? formatRaceDate(rawDate) : undefined,
+                venue: lastVenue,
+                time: lastTime,
+                raceNumber: roundNum,
+                payouts: [...payouts],
+                bets: [],
+                winningSlot,
+                winningPayout: winningPayout != null && !isNaN(winningPayout) ? winningPayout : null,
+                players,
+            });
+            continue;
+        }
+
+        // Legacy format: Venue, Time, Round, W1-W6, Empty, P1-P6 (13+ columns)
+        if (parts.length >= 13 && parts[2]?.trim()) {
+            const venue = parts[0]?.trim() ?? lastVenue ?? "?";
+            const timeStr = parts[1]?.trim();
+            const roundStr = parts[2]?.trim();
+            const roundNum = parseInt(roundStr || "", 10);
+            if (isNaN(roundNum)) continue;
+
+            if (venue) lastVenue = venue;
+            if (timeStr) {
+                const normalizedTime = timeStr as RaceTime;
+                if ((lastTime === "18:00" || lastTime === "6pm") && (normalizedTime === "12:00" || normalizedTime === "12pm")) {
+                    currentDay++;
+                }
+                lastTime = normalizedTime;
+            }
+
             for (let i = 0; i < 6; i++) {
                 const winPart = parts[3 + i]?.trim();
                 const payPart = parts[10 + i]?.trim();
-                winIndicators[i] = winPart === "?" ? NaN : parseInt(winPart || "0");
+                winIndicators[i] = winPart === "?" ? NaN : parseInt(winPart || "0", 10);
                 payouts[i] = payPart === "?" ? NaN : parseFloat(payPart || "0");
             }
 
             const winningIndex = winIndicators.findIndex((n) => n === 1);
             const winningSlot = winningIndex !== -1 ? winningIndex + 1 : null;
-            // The winning payout is the value in the payouts array at the same index as the winning indicator
             const winningPayout = winningIndex !== -1 ? payouts[winningIndex] : null;
 
             races.push({
@@ -74,10 +143,10 @@ export function parseLines(lines: string[]): Race[] {
                 venue: lastVenue,
                 time: lastTime,
                 raceNumber: roundNum,
-                payouts: [...payouts], // Only copy when needed
+                payouts: [...payouts],
                 bets: [],
                 winningSlot,
-                winningPayout: winningPayout && !isNaN(winningPayout) ? winningPayout : null,
+                winningPayout: winningPayout != null && !isNaN(winningPayout) ? winningPayout : null,
             });
         }
     }

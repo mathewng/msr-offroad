@@ -39,6 +39,7 @@ Overrides:
   --tolerance=<n>           Convergence tolerance for training
   --workers=<n>             Parallel worker threads
   --hmm-states=<n>          Number of HMM hidden states
+  --perturb-amount=<n>      Warm-start perturbation (e.g. 0.2 for ±20%)
 
 Other:
   --diagnose-hmm      Print HMM vs historical diagnostics at end
@@ -148,6 +149,12 @@ function applyOverrides(args: string[], config: BacktestConfig): BacktestConfig 
         if (!isNaN(v) && v > 0) c = { ...c, hmmStates: v };
     }
 
+    const perturbAmount = getFlagValue(args, "--perturb-amount=");
+    if (perturbAmount !== undefined) {
+        const v = parseFloat(perturbAmount);
+        if (!isNaN(v) && v >= 0) c = { ...c, perturbAmount: v };
+    }
+
     if (hasAnyFlag(args, "--diagnose-hmm")) {
         c = { ...c, diagnoseHmm: true };
     }
@@ -162,7 +169,7 @@ function applyOverrides(args: string[], config: BacktestConfig): BacktestConfig 
  * Flags: --efficiency|--yield|--bet2, --historical-weight=, --hmm-weight=,
  * --min-score=, --relative-threshold=, --prior-weight=, --hmm-smoothing=,
  * --chunk-size=, --restarts=, --bet-limit=, --ensemble-size=, --iterations=,
- * --tolerance=, --workers=, --hmm-states=, --print-config-only, --diagnose-hmm.
+ * --tolerance=, --workers=, --hmm-states=, --perturb-amount=, --print-config-only, --diagnose-hmm.
  */
 export function parseBacktestArgs(): ParsedBacktestArgs {
     const args = process.argv.slice(2);

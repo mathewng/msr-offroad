@@ -166,6 +166,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
                 restarts: config.trainingRestarts,
                 tolerance: config.convergenceTolerance,
                 smoothing: config.hmmSmoothing,
+                perturbAmount: config.perturbAmount,
                 steps: chunk.length,
                 seedParams: ensembleParams[idx], // Warm start if available
             }),
