@@ -51,8 +51,8 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     // Prevents zero-probability transitions and improves generalization.
     hmmSmoothing: 1e-4,
 
-    // Warm-start perturbation: when using seed params, scale factor for random noise (e.g. 0.2 = ±20%).
-    perturbAmount: 0.2,
+    // Warm-start perturbation: when using seed params, scale factor for random noise (e.g. 0.5 = ±50%).
+    perturbAmount: 0.5,
 };
 
 /**
@@ -73,8 +73,6 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
 
     minScoreThreshold: 0,
     relativeThreshold: 0,
-
-    useMonsterHumanStats: false,
 };
 
 /**
