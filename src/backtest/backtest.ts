@@ -152,82 +152,79 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
     );
     printHeader();
 
-    for (let i = 0; i < currentMonthRaces.length; i += config.chunkSize) {
-        const chunk = currentMonthRaces.slice(i, i + config.chunkSize);
-        const currentSequenceView = sequenceArray.subarray(0, sequence.length);
-        currentSequenceView.set(sequence);
+    const currentSequenceView = sequenceArray.subarray(0, sequence.length);
+    currentSequenceView.set(sequence);
 
-        const ensemblePromises = Array.from({ length: config.ensembleSize }, (_, idx) =>
-            pool.run({
-                sequence: currentSequenceView,
-                numStates: config.hmmStates,
-                numObservations: config.hmmObservations,
-                iterations: config.trainingIterations,
-                restarts: config.trainingRestarts,
-                tolerance: config.convergenceTolerance,
-                smoothing: config.hmmSmoothing,
-                perturbAmount: config.perturbAmount,
-                steps: chunk.length,
-                seedParams: ensembleParams[idx], // Warm start if available
-            }),
+    const ensemblePromises = Array.from({ length: config.ensembleSize }, (_, idx) =>
+        pool.run({
+            sequence: currentSequenceView,
+            numStates: config.hmmStates,
+            numObservations: config.hmmObservations,
+            iterations: config.trainingIterations,
+            restarts: config.trainingRestarts,
+            tolerance: config.convergenceTolerance,
+            smoothing: config.hmmSmoothing,
+            perturbAmount: config.perturbAmount,
+            steps: currentMonthRaces.length,
+            seedParams: ensembleParams[idx], // Warm start if available
+        }),
+    );
+
+    const allEnsemblePredictions = await Promise.all(ensemblePromises);
+
+    // Update stored parameters for the next iteration's warm start
+    for (let idx = 0; idx < config.ensembleSize; idx++) {
+        ensembleParams[idx] = (allEnsemblePredictions[idx] as any).params;
+    }
+
+    const consensusRegime = getConsensusRegime(allEnsemblePredictions);
+
+    for (let j = 0; j < currentMonthRaces.length; j++) {
+        const currentRace = currentMonthRaces[j]!;
+        aggregateStepProbs(allEnsemblePredictions, j, config.hmmObservations, invEnsembleSize, aggregatedProbs);
+
+        const { bets, score, diagnostics } = predictRace(currentRace, currentStats, aggregatedProbs, config);
+        if (config.diagnoseHmm && diagnostics) {
+            diagnosticSamples.push({ ...diagnostics, winningSlot: currentRace.winningSlot ?? null });
+        }
+
+        const isPending = currentRace.winningSlot === null;
+        const { raceProfit, raceWins } = evaluateRaceOutcome(bets, currentRace);
+
+        if (!isPending) {
+            if (bets.length > 0) {
+                stats.totalProfit += raceProfit;
+                stats.totalBetCost += bets.length;
+                if (raceWins > 0) stats.correctPredictions++;
+                stats.totalPredictions++;
+            } else {
+                stats.skippedRaces++;
+            }
+        }
+
+        const status = computeStatus(bets, isPending, raceWins);
+        printRow(
+            currentRace,
+            bets,
+            currentRace.winningSlot,
+            currentRace.winningPayout,
+            score,
+            raceProfit,
+            stats.totalProfit,
+            status,
+            consensusRegime,
         );
 
-        const allEnsemblePredictions = await Promise.all(ensemblePromises);
-
-        // Update stored parameters for the next iteration's warm start
-        for (let idx = 0; idx < config.ensembleSize; idx++) {
-            ensembleParams[idx] = (allEnsemblePredictions[idx] as any).params;
-        }
-
-        const consensusRegime = getConsensusRegime(allEnsemblePredictions);
-
-        for (let j = 0; j < chunk.length; j++) {
-            const currentRace = chunk[j]!;
-            aggregateStepProbs(allEnsemblePredictions, j, config.hmmObservations, invEnsembleSize, aggregatedProbs);
-
-            const { bets, score, diagnostics } = predictRace(currentRace, currentStats, aggregatedProbs, config);
-            if (config.diagnoseHmm && diagnostics) {
-                diagnosticSamples.push({ ...diagnostics, winningSlot: currentRace.winningSlot ?? null });
-            }
-
-            const isPending = currentRace.winningSlot === null;
-            const { raceProfit, raceWins } = evaluateRaceOutcome(bets, currentRace);
-
-            if (!isPending) {
-                if (bets.length > 0) {
-                    stats.totalProfit += raceProfit;
-                    stats.totalBetCost += bets.length;
-                    if (raceWins > 0) stats.correctPredictions++;
-                    stats.totalPredictions++;
-                } else {
-                    stats.skippedRaces++;
-                }
-            }
-
-            const status = computeStatus(bets, isPending, raceWins);
-            printRow(
-                currentRace,
-                bets,
-                currentRace.winningSlot,
-                currentRace.winningPayout,
-                score,
-                raceProfit,
-                stats.totalProfit,
-                status,
-                consensusRegime,
+        if (!isPending) {
+            const bucket = getPayoutBucket(currentRace.winningPayout!);
+            sequence.push(
+                (currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket,
             );
-
-            if (!isPending) {
-                const bucket = getPayoutBucket(currentRace.winningPayout!);
-                sequence.push(
-                    (currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket,
-                );
-                updateStats(currentStats, currentRace, config);
-            } else {
-                sequence.push(-1);
-            }
-            history.push(currentRace);
+            updateStats(currentStats, currentRace, config);
+        } else {
+            sequence.push(-1);
         }
+        history.push(currentRace);
     }
 
     pool.terminate();

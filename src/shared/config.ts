@@ -28,11 +28,6 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     // Encoding: (round - 1) * 18 + (slot - 1) * 3 + bucket. Gives HMM round-specific structure.
     hmmObservations: 54,
 
-    // Number of races to process in a single walk-forward training window.
-    // Races are done 3 at a time, so this is 3 races per chunk.
-    // The payouts for the next 3 races are also released at the same time.
-    chunkSize: 1,
-
     // Default baseline win rates. These are fallback values.
     empiricalWinRates: {
         1: EQUAL_SLOT_PROBABILITY,

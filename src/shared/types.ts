@@ -78,7 +78,6 @@ export interface BacktestConfig {
     maxWorkers: number; // Degree of parallelism for worker threads
     hmmStates: number; // Number of hidden states (latent variables) in the HMM
     hmmObservations: number; // Observation space size (e.g. 54 = 3 rounds × 6 slots × 3 buckets)
-    chunkSize: number; // The "Walk-Forward" window size for retraining models
     scoreWeights: {
         historical: number; // Weight for historical statistical EV (0.0 to 1.0)
         hmm: number; // Weight for HMM sequence-based EV (0.0 to 1.0)

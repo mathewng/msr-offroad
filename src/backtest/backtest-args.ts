@@ -31,7 +31,6 @@ Overrides:
   --relative-threshold=<n>  Edge over race average required
   --prior-weight=<n>        Prior strength for Laplace smoothing
   --hmm-smoothing=<n>       HMM re-estimation smoothing
-  --chunk-size=<n>          Races per walk-forward chunk
   --restarts=<n>            HMM training restarts per model
   --bet-limit=<n>           Max bets per race (1–6)
   --ensemble-size=<n>       Number of HMM models in ensemble
@@ -101,12 +100,6 @@ function applyOverrides(args: string[], config: BacktestConfig): BacktestConfig 
         if (!isNaN(v)) c = { ...c, hmmSmoothing: v };
     }
 
-    const chunkSize = getFlagValue(args, "--chunk-size=");
-    if (chunkSize !== undefined) {
-        const v = parseInt(chunkSize, 10);
-        if (!isNaN(v) && v > 0) c = { ...c, chunkSize: v };
-    }
-
     const restarts = getFlagValue(args, "--restarts=");
     if (restarts !== undefined) {
         const v = parseInt(restarts, 10);
@@ -168,7 +161,7 @@ function applyOverrides(args: string[], config: BacktestConfig): BacktestConfig 
  * Positional: 1) historical data file, 2) target data file.
  * Flags: --efficiency|--yield|--bet2, --historical-weight=, --hmm-weight=,
  * --min-score=, --relative-threshold=, --prior-weight=, --hmm-smoothing=,
- * --chunk-size=, --restarts=, --bet-limit=, --ensemble-size=, --iterations=,
+ * --restarts=, --bet-limit=, --ensemble-size=, --iterations=,
  * --tolerance=, --workers=, --hmm-states=, --perturb-amount=, --print-config-only, --diagnose-hmm.
  */
 export function parseBacktestArgs(): ParsedBacktestArgs {

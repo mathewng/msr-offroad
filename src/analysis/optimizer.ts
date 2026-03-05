@@ -5,7 +5,6 @@ const PROJECT_ROOT = join(import.meta.dir, "..", "..");
 
 interface BacktestParams {
     betLimit: number;
-    chunkSize: number;
     scoreWeights: { historical: number; hmm: number };
 }
 
@@ -13,7 +12,6 @@ const BACKTEST_RUNS = 5;
 /**
  * Runs backtest
  * and reads the console output to find the best settings for each betLimit: 1,2 and 3
- * - chunkSize: 3 or 6
  * - scoreWeights: starting from historical (1) and hmm (0) until hmm (0.6). historical+hmm must equal 1
  *
  * to maximise Profit
@@ -62,7 +60,6 @@ async function runSingleBacktest(params: BacktestParams): Promise<number> {
             "data_current.txt",
             `--historical-weight=${params.scoreWeights.historical}`,
             `--hmm-weight=${params.scoreWeights.hmm}`,
-            `--chunk-size=${params.chunkSize}`,
         ];
 
         // Add bet limit flag based on params.betLimit value
@@ -138,17 +135,14 @@ async function optimizeSettings() {
     const weightAdjustStep = 0.01;
     const weightAdjustRange = 1;
     const historicalWeights = Array.from({ length: fixPrecision(weightAdjustRange / weightAdjustStep) }, (_, i) => fixPrecision(1 - i * weightAdjustStep));
-    const chunkSizes = [1, 3, 6];
 
     // Initialize tracking variables for best results
     let bestMaxParams: BacktestParams = {
         betLimit: 1,
-        chunkSize: 3,
         scoreWeights: { historical: 0, hmm: 0 },
     };
     let bestAverageParams: BacktestParams = {
         betLimit: 1,
-        chunkSize: 3,
         scoreWeights: { historical: 0, hmm: 0 },
     };
     let highestMaxProfit: number;
@@ -167,56 +161,53 @@ async function optimizeSettings() {
         highestAverageProfit = -Infinity;
 
         for (const historicalWeight of historicalWeights) {
-            for (const chunkSize of chunkSizes) {
-                const hmmWeight = fixPrecision(1 - historicalWeight);
-                const params: BacktestParams = {
-                    betLimit,
-                    chunkSize,
-                    scoreWeights: { historical: historicalWeight, hmm: hmmWeight },
-                };
+            const hmmWeight = fixPrecision(1 - historicalWeight);
+            const params: BacktestParams = {
+                betLimit,
+                scoreWeights: { historical: historicalWeight, hmm: hmmWeight },
+            };
 
-                try {
-                    // Run backtest and capture profit
-                    const { minProfit, maxProfit, averageProfit, stdDev: _stdDev } = await runBacktest(params, highestMaxProfit);
-                    console.log(`Profit for ${JSON.stringify(params)}: min: ${minProfit} max: ${maxProfit} average: ${averageProfit.toFixed(1)} std dev: ${_stdDev.toFixed(2)}`);
-                    console.log();
+            try {
+                // Run backtest and capture profit
+                const { minProfit, maxProfit, averageProfit, stdDev: _stdDev } = await runBacktest(params, highestMaxProfit);
+                console.log(`Profit for ${JSON.stringify(params)}: min: ${minProfit} max: ${maxProfit} average: ${averageProfit.toFixed(1)} std dev: ${_stdDev.toFixed(2)}`);
+                console.log();
 
-                    // Update best parameters if current profit is higher
-                    if (maxProfit > highestMaxProfit) {
-                        highestMaxProfit = maxProfit;
-                        bestMaxParams = params;
-                        results = results.filter(
-                            (r) =>
-                                r.betLimit !== betLimit ||
-                                (r.betLimit === betLimit && r.type !== "max profit") ||
-                                (r.betLimit === betLimit && r.type === "max profit" && r.profit === highestMaxProfit),
-                        );
-                        results.push({
-                            type: "max profit",
-                            betLimit,
-                            params,
-                            profit: maxProfit,
-                        });
-                    }
-                    if (averageProfit > highestAverageProfit) {
-                        highestAverageProfit = averageProfit;
-                        bestAverageParams = params;
-                        results = results.filter(
-                            (r) =>
-                                r.betLimit !== betLimit ||
-                                (r.betLimit === betLimit && r.type !== "average profit") ||
-                                (r.betLimit === betLimit && r.type === "average profit" && r.profit === highestAverageProfit),
-                        );
-                        results.push({
-                            type: "average profit",
-                            betLimit,
-                            params,
-                            profit: averageProfit,
-                        });
-                    }
-                } catch (error) {
-                    console.error(`Error running backtest with params ${JSON.stringify(params)}:`, error);
+                // Update best parameters if current profit is higher
+                if (maxProfit > highestMaxProfit) {
+                    highestMaxProfit = maxProfit;
+                    bestMaxParams = params;
+                    results = results.filter(
+                        (r) =>
+                            r.betLimit !== betLimit ||
+                            (r.betLimit === betLimit && r.type !== "max profit") ||
+                            (r.betLimit === betLimit && r.type === "max profit" && r.profit === highestMaxProfit),
+                    );
+                    results.push({
+                        type: "max profit",
+                        betLimit,
+                        params,
+                        profit: maxProfit,
+                    });
                 }
+                if (averageProfit > highestAverageProfit) {
+                    highestAverageProfit = averageProfit;
+                    bestAverageParams = params;
+                    results = results.filter(
+                        (r) =>
+                            r.betLimit !== betLimit ||
+                            (r.betLimit === betLimit && r.type !== "average profit") ||
+                            (r.betLimit === betLimit && r.type === "average profit" && r.profit === highestAverageProfit),
+                    );
+                    results.push({
+                        type: "average profit",
+                        betLimit,
+                        params,
+                        profit: averageProfit,
+                    });
+                }
+            } catch (error) {
+                console.error(`Error running backtest with params ${JSON.stringify(params)}:`, error);
             }
         }
 
