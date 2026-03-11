@@ -152,38 +152,49 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
     );
     printHeader();
 
-    const currentSequenceView = sequenceArray.subarray(0, sequence.length);
-    currentSequenceView.set(sequence);
-
-    const ensemblePromises = Array.from({ length: config.ensembleSize }, (_, idx) =>
-        pool.run({
-            sequence: currentSequenceView,
-            numStates: config.hmmStates,
-            numObservations: config.hmmObservations,
-            iterations: config.trainingIterations,
-            restarts: config.trainingRestarts,
-            tolerance: config.convergenceTolerance,
-            smoothing: config.hmmSmoothing,
-            perturbAmount: config.perturbAmount,
-            steps: currentMonthRaces.length,
-            seedParams: ensembleParams[idx], // Warm start if available
-        }),
-    );
-
-    const allEnsemblePredictions = await Promise.all(ensemblePromises);
-
-    // Update stored parameters for the next iteration's warm start
-    for (let idx = 0; idx < config.ensembleSize; idx++) {
-        ensembleParams[idx] = (allEnsemblePredictions[idx] as any).params;
-    }
-
-    const consensusRegime = getConsensusRegime(allEnsemblePredictions);
+    // Walk-forward: use relaxed relative threshold when we started with no history (HMM untrained for race 0).
+    const effectiveConfig =
+        previousMonthsRaces.length === 0 && (config.relativeThreshold ?? 0) > 0
+            ? { ...config, relativeThreshold: 0 }
+            : config;
 
     for (let j = 0; j < currentMonthRaces.length; j++) {
-        const currentRace = currentMonthRaces[j]!;
-        aggregateStepProbs(allEnsemblePredictions, j, config.hmmObservations, invEnsembleSize, aggregatedProbs);
+        // Train HMM on sequence so far (history + outcomes of races 0..j-1), predict one step for race j.
+        sequenceArray.set(sequence);
+        const currentSequenceView = sequenceArray.subarray(0, sequence.length);
 
-        const { bets, score, diagnostics } = predictRace(currentRace, currentStats, aggregatedProbs, config);
+        const ensemblePromises = Array.from({ length: config.ensembleSize }, (_, idx) =>
+            pool.run({
+                sequence: currentSequenceView,
+                numStates: config.hmmStates,
+                numObservations: config.hmmObservations,
+                iterations: config.trainingIterations,
+                restarts: config.trainingRestarts,
+                tolerance: config.convergenceTolerance,
+                smoothing: config.hmmSmoothing,
+                perturbAmount: config.perturbAmount,
+                steps: 1,
+                seedParams: ensembleParams[idx],
+            }),
+        );
+
+        const allEnsemblePredictions = await Promise.all(ensemblePromises);
+
+        for (let idx = 0; idx < config.ensembleSize; idx++) {
+            ensembleParams[idx] = (allEnsemblePredictions[idx] as any).params;
+        }
+
+        const consensusRegime = getConsensusRegime(allEnsemblePredictions);
+
+        aggregateStepProbs(allEnsemblePredictions, 0, config.hmmObservations, invEnsembleSize, aggregatedProbs);
+
+        const currentRace = currentMonthRaces[j]!;
+        const { bets, score, diagnostics } = predictRace(
+            currentRace,
+            currentStats,
+            aggregatedProbs,
+            effectiveConfig,
+        );
         if (config.diagnoseHmm && diagnostics) {
             diagnosticSamples.push({ ...diagnostics, winningSlot: currentRace.winningSlot ?? null });
         }

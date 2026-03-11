@@ -30,8 +30,7 @@ export function predictRace(
 ): { bets: number[]; score: number; diagnostics?: HmmDiagnostics } {
     // Expanded alphabet: 54 = 3 rounds × 18 (6 slots × 3 buckets). Use only the slice for this race's round.
     const OBS_PER_CONTEXT = 18;
-    const roundOffset =
-        config.hmmObservations >= 54 ? (currentRace.raceNumber - 1) * OBS_PER_CONTEXT : 0;
+    const roundOffset = (currentRace.raceNumber - 1) * OBS_PER_CONTEXT;
     const hmmSlotProbs = new Float64Array(6);
     for (let i = 0; i < OBS_PER_CONTEXT; i++) {
         const slotIndex = Math.floor(i / 3);
