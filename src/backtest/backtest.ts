@@ -6,7 +6,7 @@
  * Hidden Markov Models (HMM) trained in parallel to predict race outcomes.
  */
 
-import { calculateEmpiricalWinRates, calculateStats, getPayoutBucket, parseLines, updateStats } from "../shared/utils";
+import { calculateEmpiricalWinRates, calculateStats, getPayoutBucket, parseLines, updateStats, loadRaces } from "../shared/utils";
 import { predictRace } from "../core/prediction-engine";
 import type { BacktestConfig, Race, StatsResult } from "../shared/types";
 import { WorkerPool } from "../workers/worker-pool";
@@ -17,22 +17,6 @@ import { parseBacktestArgs, BACKTEST_USAGE } from "./backtest-args";
 
 const OBS_PER_CONTEXT = 18; // 6 slots × 3 buckets
 
-/**
- * Loads race data from a flat file and parses it into structured Race objects.
- */
-export async function loadRaces(filePath: string | undefined): Promise<Race[]> {
-    if (!filePath) return [];
-    try {
-        const file = Bun.file(filePath);
-        if (await file.exists()) {
-            const text = await file.text();
-            return parseLines(text.split("\n"));
-        }
-    } catch (e) {
-        console.error(`Error loading file ${filePath}:`, e);
-    }
-    return [];
-}
 
 /** Builds the observation sequence from history (encoding: round/slot/bucket). */
 function buildInitialSequence(history: Race[]): number[] {

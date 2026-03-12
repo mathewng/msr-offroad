@@ -23,7 +23,7 @@ export interface BacktestStats {
  * Pay: Actual Payout | Score: Model confidence | Win?: Outcome | Profit | Cumulative | Status | Mode
  */
 const DATE_COL_WIDTH = 12; // "Fri, 30 Jan"
-const SEPARATOR = "-".repeat(135);
+export const SEPARATOR = "-".repeat(135);
 const HEADER = `${"Date".padStart(DATE_COL_WIDTH)} | ${"Time".padEnd(5)} | ${"Venue".padEnd(14)} | R | ${"Mode".padStart(4)} | ${"Bets".padEnd(7)} | ${"Act".padStart(3)} | ${"Pay".padStart(4)} | ${"Score".padStart(6)} | ${"Win?".padEnd(4)} | ${"Profit".padStart(8)} | ${"Cumulative".padStart(10)} | ${"Status".padEnd(8)}`;
 
 export function printHeader(): void {

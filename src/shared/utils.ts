@@ -154,6 +154,23 @@ export function parseLines(lines: string[]): Race[] {
 }
 
 /**
+ * Loads race data from a flat file and parses it into structured Race objects.
+ */
+export async function loadRaces(filePath: string | undefined): Promise<Race[]> {
+    if (!filePath) return [];
+    try {
+        const file = Bun.file(filePath);
+        if (await file.exists()) {
+            const text = await file.text();
+            return parseLines(text.split("\n"));
+        }
+    } catch (e) {
+        console.error(`Error loading file ${filePath}:`, e);
+    }
+    return [];
+}
+
+/**
  * Categorizes a payout into a "bucket" relative to that specific slot's typical range.
  *
  * This ensures that Bucket 0 always represents a "strong" (low payout) version of that lane,

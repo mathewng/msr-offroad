@@ -41,7 +41,7 @@ async function main() {
 
     {
         console.log(`
- * Bet slot 2 and 5 for 12pm and 6pm`);
+ * Bet slot 1, 2 and 3 for 12pm and 6pm`);
         clearBets(races);
         await generateBetsStrategyA(races);
         const profit = await calculateProfit(races);
@@ -49,7 +49,7 @@ async function main() {
     }
     {
         console.log(`
- * Bet slot 2 and 4 for 12pm and 6pm`);
+ * Bet slot 4, 5 and 6 for 12pm and 6pm`);
         clearBets(races);
         await generateBetsStrategyB(races);
         const profit = await calculateProfit(races);
@@ -63,7 +63,15 @@ async function main() {
         const profit = await calculateProfit(races);
         console.log("profit", profit);
     }
-   
+    {
+        console.log(`
+ * Bet slot 1,2,3,4,5,6 @100 for 12pm and 6pm`);
+        clearBets(races);
+        await generateBetsStrategyD(races);
+        const profit = await calculateProfit(races);
+        console.log("profit", profit);
+    }
+
     {
         console.log(`
  * Venue based`);
@@ -81,6 +89,7 @@ async function main() {
 
         const profit = await calculateProfit(races);
         console.log("profit", profit);
+        console.table(races);
     }
 
     console.log();
@@ -133,14 +142,13 @@ async function main() {
 /**
  * Parse lines from input data into race objects with betting information.
  *
- * This function processes tab-separated values and extracts:
- * - Venue, time, round numbers
- * - Win indicators (binary values) for each slot
- * - Payout multipliers for each slot
- * - Calculates winning slot based on win indicators
+ * Supports new format (tab-separated, optional header):
+ * Date, Time, Venue, Round, Payout1..Payout6, Player1..Player6, Win1..Win6.
+ * Win: "1" = slot won, blank = didn't win, "?" = no data.
+ * Legacy: Venue, Time, Round, W1..W6, Gap, P1..P6.
  *
  * @param lines - Array of text lines from the input file
- * @returns Promise resolving to array of Race objects with parsed data
+ * @returns Promise resolving to array of Race objects with parsed data (only races with a winner)
  */
 async function parseLines(lines: string[]): Promise<Race[]> {
     let day = 1;
@@ -149,29 +157,63 @@ async function parseLines(lines: string[]): Promise<Race[]> {
     let raceNumber = 1;
     const races: Race[] = [];
 
-    // loop through each line
     for (const line of lines) {
         if (!line.trim()) continue;
 
         const parts = line.split("\t");
-        // New format has 16 columns:
-        // 0: Venue, 1: Time, 2: Round, 3-8: Results, 9: Gap, 10-15: Payouts
+
+        // Skip header row (new format)
+        if (parts[0]?.trim() === "Date" && parts[2]?.trim() === "Venue") continue;
+
+        // New format: Date, Time, Venue, Round, Payout1-6, Player1-6, Win1-6
+        if (parts.length >= 22) {
+            const fileVenue = parts[2]!.trim();
+            const fileTime = parts[1]!.trim();
+            const fileRound = parts[3]!.trim();
+            if (fileVenue) venue = fileVenue;
+            if (fileTime) {
+                const normalizedTime: RaceTime = fileTime === "12:00" ? "12pm" : fileTime === "18:00" ? "6pm" : (fileTime as RaceTime);
+                if (time === "6pm" && normalizedTime === "12pm") day++;
+                time = normalizedTime;
+            }
+            if (fileRound) raceNumber = parseInt(fileRound, 10) || raceNumber;
+
+            const payouts = parts.slice(4, 10).map((p) => (p?.trim() === "?" ? NaN : Number(p ?? 0)));
+            const winCols = parts.slice(16, 22);
+            const winningIndex = winCols.findIndex((w) => w?.trim() === "1");
+
+            if (winningIndex === -1) {
+                console.log(`no results for venue=${venue} day=${day} time=${time} round=${raceNumber}, payouts=${payouts}`);
+            } else {
+                const winningPayout = payouts[winningIndex];
+                if (winningPayout != null && !isNaN(winningPayout)) {
+                    races.push({
+                        day,
+                        venue,
+                        time,
+                        raceNumber,
+                        payouts,
+                        bets: [],
+                        winningSlot: (winningIndex + 1) as 1 | 2 | 3 | 4 | 5 | 6,
+                        winningPayout,
+                    });
+                }
+            }
+            continue;
+        }
+
+        // Legacy format: Venue, Time, Round, W1-W6, Gap, P1-P6
         if (parts.length >= 16) {
             const fileVenue = parts[0]!.trim();
             const fileTime = parts[1]!.trim();
             const fileRound = parts[2]!.trim();
-
             if (fileVenue) venue = fileVenue;
             if (fileTime) {
                 const normalizedTime: RaceTime = fileTime === "12:00" ? "12pm" : fileTime === "18:00" ? "6pm" : (fileTime as RaceTime);
-                if (time === "6pm" && normalizedTime === "12pm") {
-                    day++;
-                }
+                if (time === "6pm" && normalizedTime === "12pm") day++;
                 time = normalizedTime;
             }
-            if (fileRound) {
-                raceNumber = parseInt(fileRound);
-            }
+            if (fileRound) raceNumber = parseInt(fileRound, 10) || raceNumber;
 
             const payouts = parts.slice(10, 16).map(Number);
             const winningIndex = parts
@@ -183,7 +225,6 @@ async function parseLines(lines: string[]): Promise<Race[]> {
                 console.log(`no results for venue=${venue} day=${day} time=${time} round=${raceNumber}, payouts=${payouts}`);
             } else {
                 const winningPayout = payouts[winningIndex]!;
-
                 races.push({
                     day,
                     venue,
@@ -191,7 +232,7 @@ async function parseLines(lines: string[]): Promise<Race[]> {
                     raceNumber,
                     payouts,
                     bets: [],
-                    winningSlot: <1 | 2 | 3 | 4 | 5 | 6>(winningIndex + 1),
+                    winningSlot: (winningIndex + 1) as 1 | 2 | 3 | 4 | 5 | 6,
                     winningPayout,
                 });
             }
@@ -207,34 +248,35 @@ function clearBets(races: Race[]) {
 }
 
 /**
- * Bet slot 2 and 5 for 12pm and 6pm
- * @param races
- */
-/**
- * Bet slot 2 and 5 for 12pm and 6pm
- * Strategy A: Conservative approach focusing on two slots that historically perform well
+ * Bet slot 1, 2 and 3 for 12pm and 6pm
  * @param races
  */
 async function generateBetsStrategyA(races: Race[]) {
     races.forEach((r, i, a) => {
         if (r.time === "12pm") {
-            // always bet slot 2 and 5 for 12pm
+            r.bets.push({
+                slot: 1,
+                cost: 200,
+            });
             r.bets.push({
                 slot: 2,
                 cost: 200,
             });
             r.bets.push({
-                slot: 5,
+                slot: 3,
                 cost: 200,
             });
         } else if (r.time === "6pm") {
-            // always bet slot 2 and 5 for 12pm
+            r.bets.push({
+                slot: 1,
+                cost: 200,
+            });
             r.bets.push({
                 slot: 2,
                 cost: 200,
             });
             r.bets.push({
-                slot: 5,
+                slot: 3,
                 cost: 200,
             });
         }
@@ -242,44 +284,41 @@ async function generateBetsStrategyA(races: Race[]) {
 }
 
 /**
- * Bet slot 2 and 4 for 12pm and 6pm
- * @param races
- */
-/**
- * Bet slot 2 and 4 for 12pm and 6pm
- * Strategy B: Alternative conservative approach with different slots
+ * Bet slot 4, 5 and 6 for 12pm and 6pm
  * @param races
  */
 async function generateBetsStrategyB(races: Race[]) {
     races.forEach((r, i, a) => {
         if (r.time === "12pm") {
-            // always bet slot 2 and 4 for 12pm
             r.bets.push({
-                slot: 2,
+                slot: 4,
                 cost: 200,
             });
             r.bets.push({
-                slot: 4,
+                slot: 5,
+                cost: 200,
+            });
+            r.bets.push({
+                slot: 6,
                 cost: 200,
             });
         } else if (r.time === "6pm") {
-            // always bet slot 2 and 4 for 12pm
             r.bets.push({
-                slot: 2,
+                slot: 4,
                 cost: 200,
             });
             r.bets.push({
-                slot: 4,
+                slot: 5,
+                cost: 200,
+            });
+            r.bets.push({
+                slot: 6,
                 cost: 200,
             });
         }
     });
 }
 
-/**
- * Bet slot 2, 4 and 5 for 12pm and 6pm
- * @param races
- */
 /**
  * Bet slot 2, 4 and 5 for 12pm and 6pm
  * Strategy C: Balanced approach with three slots
@@ -319,6 +358,39 @@ async function generateBetsStrategyC(races: Race[]) {
     });
 }
 
+/**
+ * Bet slot 1,2,3,4,5,6 @100 for 12pm and 6pm
+ * @param races
+ */
+async function generateBetsStrategyD(races: Race[]) {
+    races.forEach((r, i, a) => {
+
+        const winningSlots: number[] = [];
+        if (a[i - 1]?.winningSlot) winningSlots.push(a[i - 1]?.winningSlot);
+        if (a[i - 2]?.winningSlot) winningSlots.push(a[i - 2]?.winningSlot);
+        if (a[i - 3]?.winningSlot) winningSlots.push(a[i - 3]?.winningSlot);
+
+
+        console.log(`winningSlots=${winningSlots.join(",")}`);
+        winningSlots.sort((a, b) => a - b);
+        if (winningSlots.length > 0) {
+            let newWinningSlots = [...new Set(winningSlots)];
+            if (newWinningSlots.length < winningSlots.length) {
+                for (const slot of newWinningSlots) {
+                    r.bets.push({ slot, cost: 200 });
+                }
+            } else {
+                newWinningSlots.sort((a, b) => a - b);
+                newWinningSlots.splice(0,1);
+                for (const slot of newWinningSlots) {
+                    r.bets.push({ slot, cost: 200 });
+                }
+            }
+        };
+        
+        console.log(`bets=${r.bets.map(b=>b.slot).join(",")}`);
+    });
+}
 /**
  * Venue-based strategy (no round/raceNumber).
  * Computes pWin and expected value per (venue, slot) from allRaces,
@@ -439,7 +511,7 @@ async function generateBetsStrategyI(races: Race[]) {
             evByVenueRoundSlot[key][slot] = { pWin, expectedValue };
         }
     }
-    
+
 
     // For each race, place 2 bets on the top 2 slots by expected value
     for (const r of races) {
@@ -463,11 +535,6 @@ async function generateBetsStrategyI(races: Race[]) {
 /**
  * Bet profitable from recommendations
  * Up to 4 bets per race
- * @param races
- */
-/**
- * Bet profitable from recommendations
- * Up to 4 bets per race
  * Strategy Y: Uses historical performance recommendations to place bets
  * @param races
  */
@@ -483,10 +550,6 @@ async function generateBetsStrategyY(races: Race[], recommendations: { slot: num
     });
 }
 
-/**
- * Bet profitable from recommendations
- * @param races
- */
 /**
  * Bet profitable from recommendations
  * Strategy Z: Simple approach betting on recommended slots
