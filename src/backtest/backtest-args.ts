@@ -37,6 +37,7 @@ Overrides:
   --iterations=<n>          Max Baum-Welch iterations per model
   --tolerance=<n>           Convergence tolerance for training
   --workers=<n>             Parallel worker threads
+  --chunk-size=<n>          Number of races per retraining chunk
   --hmm-states=<n>          Number of HMM hidden states
   --perturb-amount=<n>      Warm-start perturbation (e.g. 0.2 for ±20%)
 
@@ -134,6 +135,12 @@ function applyOverrides(args: string[], config: BacktestConfig): BacktestConfig 
     if (workers !== undefined) {
         const v = parseInt(workers, 10);
         if (!isNaN(v) && v > 0) c = { ...c, maxWorkers: v };
+    }
+
+    const chunkSize = getFlagValue(args, "--chunk-size=");
+    if (chunkSize !== undefined) {
+        const v = parseInt(chunkSize, 10);
+        if (!isNaN(v) && v > 0) c = { ...c, chunkSize: v };
     }
 
     const hmmStates = getFlagValue(args, "--hmm-states=");

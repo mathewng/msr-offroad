@@ -7,7 +7,7 @@ import { EQUAL_SLOT_PROBABILITY } from "./utils";
  */
 const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreThreshold" | "relativeThreshold"> = {
     // Number of HMM models to train in the ensemble. Higher = more stable predictions.
-    ensembleSize: 64,
+    ensembleSize: 256,
 
     // Maximum iterations for the Baum-Welch training algorithm.
     trainingIterations: 10_000,
@@ -16,7 +16,7 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     trainingRestarts: 8,
 
     // Convergence cutoff for training. Smaller values yield more precise fits but take longer.
-    convergenceTolerance: 1e-3,
+    convergenceTolerance: 5e-3,
 
     // Number of CPU cores to use for parallel training.
     maxWorkers: 4,
@@ -27,6 +27,9 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     // Observation space: round (1–3) × 6 slots × 3 buckets = 54.
     // Encoding: (round - 1) * 18 + (slot - 1) * 3 + bucket. Gives HMM round-specific structure.
     hmmObservations: 54,
+
+    // Number of races to process in a single walk-forward training window.
+    chunkSize: 1,
 
     // Default baseline win rates. These are fallback values.
     empiricalWinRates: {
@@ -59,13 +62,13 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
 export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
     ...BASE_CONFIG,
 
+    chunkSize: 6,
+
     betLimit: 3,
 
     scoreWeights: {
-        // historical: 0.81,
-        // hmm: 0.19,
-        historical: 0.5,
-        hmm: 0.5,
+        historical: 0.81,
+        hmm: 0.19,
     },
 
     minScoreThreshold: 0,
@@ -78,6 +81,8 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
  */
 export const CONFIG_BET2: BacktestConfig = {
     ...BASE_CONFIG,
+
+    chunkSize: 2,
 
     betLimit: 2,
 
@@ -99,6 +104,8 @@ export const CONFIG_BET2: BacktestConfig = {
  */
 export const CONFIG_EFFICIENCY: BacktestConfig = {
     ...BASE_CONFIG,
+
+    chunkSize: 6,
 
     betLimit: 1,
 

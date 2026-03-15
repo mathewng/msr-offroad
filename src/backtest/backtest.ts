@@ -142,8 +142,10 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
             ? { ...config, relativeThreshold: 0 }
             : config;
 
-    for (let j = 0; j < currentMonthRaces.length; j++) {
-        // Train HMM on sequence so far (history + outcomes of races 0..j-1), predict one step for race j.
+    for (let i = 0; i < currentMonthRaces.length; i += config.chunkSize) {
+        const chunk = currentMonthRaces.slice(i, i + config.chunkSize);
+
+        // Train HMM on sequence so far (history + outcomes of races before this chunk).
         sequenceArray.set(sequence);
         const currentSequenceView = sequenceArray.subarray(0, sequence.length);
 
@@ -157,7 +159,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
                 tolerance: config.convergenceTolerance,
                 smoothing: config.hmmSmoothing,
                 perturbAmount: config.perturbAmount,
-                steps: 1,
+                steps: chunk.length,
                 seedParams: ensembleParams[idx],
             }),
         );
@@ -170,56 +172,58 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
 
         const consensusRegime = getConsensusRegime(allEnsemblePredictions);
 
-        aggregateStepProbs(allEnsemblePredictions, 0, config.hmmObservations, invEnsembleSize, aggregatedProbs);
+        for (let j = 0; j < chunk.length; j++) {
+            const currentRace = chunk[j]!;
+            aggregateStepProbs(allEnsemblePredictions, j, config.hmmObservations, invEnsembleSize, aggregatedProbs);
 
-        const currentRace = currentMonthRaces[j]!;
-        const { bets, score, diagnostics } = predictRace(
-            currentRace,
-            currentStats,
-            aggregatedProbs,
-            effectiveConfig,
-        );
-        if (config.diagnoseHmm && diagnostics) {
-            diagnosticSamples.push({ ...diagnostics, winningSlot: currentRace.winningSlot ?? null });
-        }
-
-        const isPending = currentRace.winningSlot === null;
-        const { raceProfit, raceWins } = evaluateRaceOutcome(bets, currentRace);
-
-        if (!isPending) {
-            if (bets.length > 0) {
-                stats.totalProfit += raceProfit;
-                stats.totalBetCost += bets.length;
-                if (raceWins > 0) stats.correctPredictions++;
-                stats.totalPredictions++;
-            } else {
-                stats.skippedRaces++;
-            }
-        }
-
-        const status = computeStatus(bets, isPending, raceWins);
-        printRow(
-            currentRace,
-            bets,
-            currentRace.winningSlot,
-            currentRace.winningPayout,
-            score,
-            raceProfit,
-            stats.totalProfit,
-            status,
-            consensusRegime,
-        );
-
-        if (!isPending) {
-            const bucket = getPayoutBucket(currentRace.winningPayout!);
-            sequence.push(
-                (currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket,
+            const { bets, score, diagnostics } = predictRace(
+                currentRace,
+                currentStats,
+                aggregatedProbs,
+                effectiveConfig,
             );
-            updateStats(currentStats, currentRace, config);
-        } else {
-            sequence.push(-1);
+            if (config.diagnoseHmm && diagnostics) {
+                diagnosticSamples.push({ ...diagnostics, winningSlot: currentRace.winningSlot ?? null });
+            }
+
+            const isPending = currentRace.winningSlot === null;
+            const { raceProfit, raceWins } = evaluateRaceOutcome(bets, currentRace);
+
+            if (!isPending) {
+                if (bets.length > 0) {
+                    stats.totalProfit += raceProfit;
+                    stats.totalBetCost += bets.length;
+                    if (raceWins > 0) stats.correctPredictions++;
+                    stats.totalPredictions++;
+                } else {
+                    stats.skippedRaces++;
+                }
+            }
+
+            const status = computeStatus(bets, isPending, raceWins);
+            printRow(
+                currentRace,
+                bets,
+                currentRace.winningSlot,
+                currentRace.winningPayout,
+                score,
+                raceProfit,
+                stats.totalProfit,
+                status,
+                consensusRegime,
+            );
+
+            if (!isPending) {
+                const bucket = getPayoutBucket(currentRace.winningPayout!);
+                sequence.push(
+                    (currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket,
+                );
+                updateStats(currentStats, currentRace, config);
+            } else {
+                sequence.push(-1);
+            }
+            history.push(currentRace);
         }
-        history.push(currentRace);
     }
 
     pool.terminate();

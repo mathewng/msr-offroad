@@ -72,6 +72,7 @@ export interface StatsResult {
 export interface BacktestConfig {
     betLimit: number; // Maximum number of slots to bet on per race
     ensembleSize: number; // Number of HMM models to train in parallel per chunk
+    chunkSize: number; // Number of races to process before retraining the HMM ensemble
     trainingIterations: number; // Max Epochs for the Baum-Welch algorithm
     trainingRestarts: number; // Number of training sessions with different initializations
     convergenceTolerance: number; // Log-likelihood delta threshold for early stopping
