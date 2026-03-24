@@ -45,3 +45,8 @@ data_*.txt
 
 # backup files
 backup*.7z
+
+# gbt train/backtest data files
+gbt_model.json
+slots_won.json
+monsters_won.json

@@ -13,8 +13,7 @@
   - **src/core/** – `hmm.ts`, `random-pool.ts`, `prediction-engine.ts` (HMM model and prediction).
   - **src/workers/** – `worker-pool.ts`, `hmm-worker.ts` (concurrency).
   - **src/backtest/** – `backtest.ts`, `backtest-args.ts`, `result-printer.ts`, `hmm-diagnostics.ts`.
-  - **src/analysis/** – `analyze_data.ts`, `data_check.ts`, `investigate_factors.ts`, `optimizer.ts`.
-  - **src/main.ts** – Alternate CLI entry.
+  - **src/cli/** – `evaluate-strategies.ts`, `analyze-data.ts`, `data-check.ts`, `investigate-factors.ts`, `optimizer.ts`, `train-gbt.ts`, `experiment-recency.ts`.
 - Data files (`data_historical.txt`, `data_current.txt`, etc.) remain in project root.
 
 ## Build, Lint, and Test Commands

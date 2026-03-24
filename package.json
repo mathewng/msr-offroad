@@ -13,5 +13,8 @@
     },
     "peerDependencies": {
         "typescript": "^5"
+    },
+    "dependencies": {
+        "decision-tree": "^1.0.0"
     }
 }

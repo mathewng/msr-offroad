@@ -8,12 +8,12 @@
  * - Q3: Whether per-dimension decay rates are beneficial
  */
 
-import { calculateEmpiricalWinRates, loadRaces } from "./src/shared/utils";
-import { predictRace } from "./src/core/prediction-engine";
-import type { Race, StatsResult, BacktestConfig, Bet, SlotStat, BucketStat } from "./src/shared/types";
-import { CONFIG_HIGHEST_YIELD, CONFIG_EFFICIENCY, CONFIG_BET2 } from "./src/shared/config";
-import { WorkerPool } from "./src/workers/worker-pool";
-import { formatCurrency } from "./src/shared/utils";
+import { calculateEmpiricalWinRates, loadRaces } from "../shared/utils";
+import { predictRace } from "../core/prediction-engine";
+import type { Race, StatsResult, BacktestConfig, Bet, SlotStat, BucketStat } from "../shared/types";
+import { CONFIG_HIGHEST_YIELD, CONFIG_EFFICIENCY, CONFIG_BET2 } from "../shared/config";
+import { WorkerPool } from "../workers/worker-pool";
+import { formatCurrency } from "../shared/utils";
 
 const OBS_PER_CONTEXT = 18;
 

@@ -74,7 +74,7 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
     },
 
     minScoreThreshold: 0,
-    relativeThreshold: 0,
+    relativeThreshold: 0.075,
 };
 
 /**
@@ -89,12 +89,12 @@ export const CONFIG_BET2: BacktestConfig = {
     betLimit: 2,
 
     scoreWeights: {
-        historical: 0.3,
-        hmm: 0.7,
+        historical: 0.1,
+        hmm: 0.9,
     },
 
     minScoreThreshold: 0,
-    relativeThreshold: 0,
+    relativeThreshold: 0.075,
 };
 
 /**

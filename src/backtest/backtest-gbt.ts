@@ -11,7 +11,7 @@ async function runGBTBacktest(prevFile: string, currFile: string, betLimit: numb
     const gbt = await loadGBTModel(modelPath);
     
     if (!gbt) {
-        console.error("No trained model found. Run 'bun src/analysis/train_gbt.ts' first.");
+        console.error("No trained model found. Run 'bun src/cli/train-gbt.ts' first.");
         return;
     }
 

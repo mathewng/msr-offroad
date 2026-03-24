@@ -1,4 +1,4 @@
-import { loadRaces } from "../shared/utils";
+import { loadRaces, calculateEmpiricalWinRates } from "../shared/utils";
 import { trainGBT, saveGBTModel } from "../core/gbt-engine";
 
 async function main() {
@@ -11,7 +11,6 @@ async function main() {
     const allRaces = [...historicalRaces,...currRaces].filter(r => r.winningSlot !== null);
     
     // Calculate win rates for feature engineering
-    const { calculateEmpiricalWinRates } = await import("../shared/utils");
     const winRates = calculateEmpiricalWinRates(allRaces);
 
     // Calculate monster win rates
