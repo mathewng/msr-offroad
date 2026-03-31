@@ -39,12 +39,15 @@ export function predictGBT(
     rates?: Record<number, number>,
     monsterRates?: Record<string, number>
 ): number[] {
-    const probs = race.payouts.map((_, i) => {
+    const rawScores = race.payouts.map((_, i) => {
         const features = extractFeatures(race, i, rates, monsterRates);
-        const score = gbt.predict(features);
-        // Apply sigmoid to convert regression score to probability
-        return 1 / (1 + Math.exp(-score));
+        return gbt.predict(features);
     });
+
+    // Apply softmax to convert raw scores to probabilities that sum to 1
+    const expScores = rawScores.map(s => Math.exp(s));
+    const sumExp = expScores.reduce((a, b) => a + b, 0);
+    const probs = expScores.map(s => s / (sumExp || 1));
 
     return probs;
 }

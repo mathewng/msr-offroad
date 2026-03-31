@@ -28,6 +28,8 @@ export interface Race {
     bets: Bet[]; // List of bets made on this race
     winningSlot: number | null; // The slot that actually won (1-6)
     winningPayout: number | null; // The payout multiplier for the winner
+    /** True if the race has not happened yet (unseen), false if it is seen or result is missing (?) */
+    isUnseen?: boolean;
     /** Player/monster name per slot (1-6). Empty string = random human, non-empty = monster name. Omitted in old data. */
     players?: (string | null)[];
 }
@@ -78,7 +80,7 @@ export interface BacktestConfig {
     convergenceTolerance: number; // Log-likelihood delta threshold for early stopping
     maxWorkers: number; // Degree of parallelism for worker threads
     hmmStates: number; // Number of hidden states (latent variables) in the HMM
-    hmmObservations: number; // Observation space size (e.g. 54 = 3 rounds × 6 slots × 3 buckets)
+    hmmObservations: number; // Observation space size (18 = 6 slots × 3 buckets)
     scoreWeights: {
         historical: number; // Weight for historical statistical EV (0.0 to 1.0)
         hmm: number; // Weight for HMM sequence-based EV (0.0 to 1.0)

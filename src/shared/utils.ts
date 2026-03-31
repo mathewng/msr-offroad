@@ -76,14 +76,33 @@ export function parseLines(lines: string[]): Race[] {
                 lastTime = normalizedTime;
             }
 
+            let isUnseen = true;
+            let resultRecorded = true;
             for (let i = 0; i < 6; i++) {
                 const payPart = parts[4 + i]?.trim();
-                const playerPart = parts[10 + i]?.trim();
                 const winPart = parts[16 + i]?.trim();
                 payouts[i] = payPart === "?" ? NaN : parseFloat(payPart || "0");
-                winIndicators[i] = winPart === "?" ? NaN : winPart === "1" ? 1 : 0;
+                
+                if (winPart === "1") {
+                    winIndicators[i] = 1;
+                    isUnseen = false;
+                } else if (winPart === "0") {
+                    winIndicators[i] = 0;
+                    isUnseen = false;
+                } else if (winPart === "?") {
+                    winIndicators[i] = NaN;
+                    resultRecorded = false;
+                } else {
+                    // Blank indicator
+                    winIndicators[i] = NaN;
+                }
             }
 
+            // A race is unseen if NO result is recorded (0 or 1) AND it's NOT marked with ?
+            // In practice, this means all win columns were blank.
+            const hasAnyResult = winIndicators.some(v => v === 0 || v === 1);
+            const isMarkedNotRecorded = parts.slice(16, 22).some(p => p?.trim() === "?");
+            
             const winningIndex = winIndicators.findIndex((n) => n === 1);
             const winningSlot = winningIndex !== -1 ? winningIndex + 1 : null;
             const winningPayout = winningIndex !== -1 ? payouts[winningIndex] : null;
@@ -105,6 +124,7 @@ export function parseLines(lines: string[]): Race[] {
                 bets: [],
                 winningSlot,
                 winningPayout: winningPayout != null && !isNaN(winningPayout) ? winningPayout : null,
+                isUnseen: !hasAnyResult && !isMarkedNotRecorded,
                 players,
             });
             continue;
@@ -127,10 +147,20 @@ export function parseLines(lines: string[]): Race[] {
                 lastTime = normalizedTime;
             }
 
+            let hasAnyResult = false;
+            let isMarkedNotRecorded = false;
             for (let i = 0; i < 6; i++) {
                 const winPart = parts[3 + i]?.trim();
                 const payPart = parts[10 + i]?.trim();
-                winIndicators[i] = winPart === "?" ? NaN : parseInt(winPart || "0", 10);
+                if (winPart === "1" || winPart === "0") {
+                    winIndicators[i] = parseInt(winPart, 10);
+                    hasAnyResult = true;
+                } else if (winPart === "?") {
+                    winIndicators[i] = NaN;
+                    isMarkedNotRecorded = true;
+                } else {
+                    winIndicators[i] = NaN;
+                }
                 payouts[i] = payPart === "?" ? NaN : parseFloat(payPart || "0");
             }
 
@@ -147,6 +177,7 @@ export function parseLines(lines: string[]): Race[] {
                 bets: [],
                 winningSlot,
                 winningPayout: winningPayout != null && !isNaN(winningPayout) ? winningPayout : null,
+                isUnseen: !hasAnyResult && !isMarkedNotRecorded,
             });
         }
     }

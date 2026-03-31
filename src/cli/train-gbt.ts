@@ -2,21 +2,31 @@ import { loadRaces, calculateEmpiricalWinRates } from "../shared/utils";
 import { trainGBT, saveGBTModel } from "../core/gbt-engine";
 
 async function main() {
-    const histFile = "data_historical.txt";
-    const currFile = "data_current.txt";
+    const args = process.argv.slice(2);
+    const files = args.length > 0 ? args : ["data_historical.txt"];
     
-    console.log("Loading race data...");
-    const historicalRaces = await loadRaces(histFile);
-    const currRaces = await loadRaces(currFile);
-    const allRaces = [...historicalRaces,...currRaces].filter(r => r.winningSlot !== null);
+    console.log(`Loading training data from: ${files.join(", ")}...`);
     
-    // Calculate win rates for feature engineering
-    const winRates = calculateEmpiricalWinRates(allRaces);
+    let trainingRaces: any[] = [];
+    for (const f of files) {
+        const races = await loadRaces(f);
+        // Seen races have a winningSlot (1-6). 
+        // Unseen (blank) and Unrecorded (?) races have winningSlot === null and are ignored for training.
+        const seen = races.filter(r => r.winningSlot !== null);
+        trainingRaces = trainingRaces.concat(seen);
+    }
+    
+    if (trainingRaces.length === 0) {
+        console.error("No training data found (races with winning slots).");
+        return;
+    }
 
-    // Calculate monster win rates
+    // Calculate win rates for feature engineering ONLY using training data
+    const winRates = calculateEmpiricalWinRates(trainingRaces);
+
+    // Calculate monster win rates ONLY using training data
     const monsterCounts: Record<string, { wins: number, total: number }> = {};
-    for (const r of allRaces) {
-        if (r.winningSlot === null) continue;
+    for (const r of trainingRaces) {
         for (let i = 0; i < 6; i++) {
             const m = r.players?.[i] ?? "Human";
             if (!monsterCounts[m]) monsterCounts[m] = { wins: 0, total: 0 };
@@ -29,8 +39,8 @@ async function main() {
         monsterRates[m] = (c.wins + 0.1) / (c.total + 0.6);
     }
     
-    console.log(`Training on ${allRaces.length} all races...`);
-    const gbt = trainGBT(allRaces, winRates, monsterRates);
+    console.log(`Training on ${trainingRaces.length} races...`);
+    const gbt = trainGBT(trainingRaces, winRates, monsterRates);
     
     console.log("Model trained successfully.");
     

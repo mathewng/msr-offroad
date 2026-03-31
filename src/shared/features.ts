@@ -55,8 +55,8 @@ export function extractFeatures(
         isFavorite,
         payoutDeviation: payout / (avgPayout || 1),
         logPayout: Math.log(payout || 1),
-        slotWinRate: rates?.[slot] ?? 0.16,
-        monsterWinRate: monsterRates?.[race.players?.[slotIndex] ?? "Human"] ?? 0.16,
+        slotWinRate: (rates as any)?.[slot] ?? (rates as any)?.[slot.toString()] ?? 0.16,
+        monsterWinRate: (monsterRates as any)?.[race.players?.[slotIndex] ?? "Human"] ?? 0.16,
     };
 }
 

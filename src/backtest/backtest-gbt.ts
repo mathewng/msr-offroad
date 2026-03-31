@@ -3,8 +3,7 @@ import { loadGBTModel, predictGBT } from "../core/gbt-engine";
 import { printHeader, printRow, printSummary, SEPARATOR } from "./result-printer";
 import type { BacktestStats } from "./result-printer";
 
-async function runGBTBacktest(prevFile: string, currFile: string, betLimit: number, minScore: number) {
-    const historicalRaces = await loadRaces(prevFile);
+async function runGBTBacktest(currFile: string, betLimit: number, minScore: number) {
     const currentRaces = await loadRaces(currFile);
     
     const modelPath = "gbt_model.json";
@@ -15,7 +14,7 @@ async function runGBTBacktest(prevFile: string, currFile: string, betLimit: numb
         return;
     }
 
-    // Load win rates for features
+    // Load win rates for features (calculated ONLY from training data in train-gbt.ts)
     const ratesFile = Bun.file("slots_won.json");
     const winRates = (await ratesFile.exists()) ? await ratesFile.json() : {};
 
@@ -92,8 +91,8 @@ async function runGBTBacktest(prevFile: string, currFile: string, betLimit: numb
 
     printSummary(stats);
 
-    // Print latest 3 upcoming races (no winner yet)
-    const upcoming = currentRaces.filter((r) => r.winningSlot === null);
+    // Print latest 3 upcoming races (no winner yet, and not marked as unrecorded ?)
+    const upcoming = currentRaces.filter((r) => r.isUnseen);
     const latestUpcoming = upcoming.slice(-3);
     if (latestUpcoming.length > 0) {
         console.log("\n--- Latest 3 upcoming races (predictions) ---");
@@ -134,8 +133,10 @@ function getFlagValue(args: string[], prefix: string): string | undefined {
 
 const args = process.argv.slice(2);
 const positionalArgs = args.filter(a => !a.startsWith("-"));
-const prevFile = positionalArgs[0] || "data_historical.txt";
-const currFile = positionalArgs[1] || "data_current.txt";
+
+// If two files are provided, first is training (ignored here since model is pre-trained)
+// and second is test data. If one file is provided, it's the test data.
+const testFile = positionalArgs.length >= 2 ? positionalArgs[1] : positionalArgs[0] || "data_current.txt";
 
 const betLimitStr = getFlagValue(args, "--bet-limit=");
 const betLimit = betLimitStr ? parseInt(betLimitStr, 10) : 2;
@@ -143,4 +144,4 @@ const betLimit = betLimitStr ? parseInt(betLimitStr, 10) : 2;
 const minScoreStr = getFlagValue(args, "--min-score=");
 const minScore = minScoreStr ? parseFloat(minScoreStr) : 0.15;
 
-runGBTBacktest(prevFile, currFile, betLimit, minScore).catch(console.error);
+runGBTBacktest(testFile!, betLimit, minScore).catch(console.error);

@@ -7,7 +7,7 @@ import { EQUAL_SLOT_PROBABILITY } from "./utils";
  */
 const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreThreshold" | "relativeThreshold"> = {
     // Number of HMM models to train in the ensemble. Higher = more stable predictions.
-    ensembleSize: 100,
+    ensembleSize: 16,
 
     // Maximum iterations for the Baum-Welch training algorithm.
     trainingIterations: 10_000,
@@ -22,14 +22,14 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     maxWorkers: 4,
 
     // Number of hidden states in the HMM.
-    hmmStates: 22,
+    hmmStates: 8,
 
     // Observation space: round (1–3) × 6 slots × 3 buckets = 54.
     // Encoding: (round - 1) * 18 + (slot - 1) * 3 + bucket. Gives HMM round-specific structure.
     hmmObservations: 54,
 
     // Number of races to process in a single walk-forward training window.
-    chunkSize: 3,
+    chunkSize: 1,
 
     // Default baseline win rates. These are fallback values.
     empiricalWinRates: {
@@ -43,14 +43,14 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
 
     // The weight of the prior (fictitious sample size) for smoothing.
     // Higher values make the model stickier to historical averages.
-    priorWeight: 1,
+    priorWeight: 5,
 
     // Laplace smoothing constant for HMM re-estimation.
     // Prevents zero-probability transitions and improves generalization.
     hmmSmoothing: 1e-4,
 
     // Warm-start perturbation: when using seed params, scale factor for random noise (e.g. 0.2 = ±20%).
-    perturbAmount: 0.2,
+    perturbAmount: 0.5,
 };
 
 /**
@@ -62,15 +62,11 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
 export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
     ...BASE_CONFIG,
 
-    chunkSize: 6,
-
     betLimit: 3,
 
     scoreWeights: {
-        // historical: 0.81,
-        // hmm: 0.19,
-        historical: 0,
-        hmm: 1,
+        historical: 0.81,
+        hmm: 0.19,
     },
 
     minScoreThreshold: 0,
@@ -84,13 +80,11 @@ export const CONFIG_HIGHEST_YIELD: BacktestConfig = {
 export const CONFIG_BET2: BacktestConfig = {
     ...BASE_CONFIG,
 
-    chunkSize: 6,
-
     betLimit: 2,
 
     scoreWeights: {
-        historical: 0.1,
-        hmm: 0.9,
+        historical: 0.3,
+        hmm: 0.7,
     },
 
     minScoreThreshold: 0,
@@ -106,8 +100,6 @@ export const CONFIG_BET2: BacktestConfig = {
  */
 export const CONFIG_EFFICIENCY: BacktestConfig = {
     ...BASE_CONFIG,
-
-    chunkSize: 6,
 
     betLimit: 1,
 

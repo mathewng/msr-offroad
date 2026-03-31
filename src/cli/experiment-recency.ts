@@ -8,14 +8,12 @@
  * - Q3: Whether per-dimension decay rates are beneficial
  */
 
-import { calculateEmpiricalWinRates, loadRaces } from "../shared/utils";
+import { calculateEmpiricalWinRates, loadRaces, getPayoutBucket } from "../shared/utils";
 import { predictRace } from "../core/prediction-engine";
 import type { Race, StatsResult, BacktestConfig, Bet, SlotStat, BucketStat } from "../shared/types";
 import { CONFIG_HIGHEST_YIELD, CONFIG_EFFICIENCY, CONFIG_BET2 } from "../shared/config";
 import { WorkerPool } from "../workers/worker-pool";
 import { formatCurrency } from "../shared/utils";
-
-const OBS_PER_CONTEXT = 18;
 
 /**
  * Calculate weighted statistics with exponential decay
@@ -52,7 +50,7 @@ function calculateWeightedStats(
 
         const slot = race.winningSlot;
         const payout = race.winningPayout;
-        const bucket = Math.floor(payout / 2);
+        const bucket = getPayoutBucket(payout);
         const weight = normalizedWeights[r];
 
         // Initialize slot stats
@@ -189,8 +187,8 @@ async function runBacktestWithRecency(
     const history: Race[] = [...previousMonthsRaces];
     const sequence = history.map((r) => {
         if (r.winningSlot === null || r.winningPayout === null) return -1;
-        const bucket = Math.floor(r.winningPayout / 2);
-        return (r.raceNumber - 1) * OBS_PER_CONTEXT + (r.winningSlot - 1) * 3 + bucket;
+        const bucket = getPayoutBucket(r.winningPayout);
+        return (r.winningSlot - 1) * 3 + bucket;
     });
 
     const aggregatedProbs = new Float64Array(config.hmmObservations);
@@ -262,11 +260,8 @@ async function runBacktestWithRecency(
 
             // Update history
             if (currentRace.winningSlot !== null) {
-                const bucket = Math.floor(currentRace.winningPayout! / 2);
-                sequence.push(
-                    (currentRace.raceNumber - 1) * OBS_PER_CONTEXT +
-                    (currentRace.winningSlot! - 1) * 3 + bucket,
-                );
+                const bucket = getPayoutBucket(currentRace.winningPayout!);
+                sequence.push((currentRace.winningSlot! - 1) * 3 + bucket);
                 history.push(currentRace);
             }
         }
