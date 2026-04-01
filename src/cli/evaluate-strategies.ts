@@ -89,7 +89,17 @@ async function main() {
 
         const profit = await calculateProfit(races);
         console.log("profit", profit);
-        console.table(races);
+        console.table(races.map(r=>({...r, payouts: r.payouts.join(","), bets: r.bets.map(b=>b.slot).join(","), won: r.bets.map(b=>b.slot).includes(<number>r.winningSlot)?"YES":"NO"})));
+    }
+    {
+        console.log(`
+            * Bet as much as I can`);
+        clearBets(races);
+        await generateBetsStrategyJ(races);
+
+        const profit = await calculateProfit(races);
+        console.log("profit", profit);
+        console.table(races.map(r=>({...r, payouts: r.payouts.join(","), bets: r.bets.map(b=>b.slot).join(","), won: r.bets.map(b=>b.slot).includes(<number>r.winningSlot)?"YES":"NO"})));
     }
 
     console.log();
@@ -370,8 +380,7 @@ async function generateBetsStrategyD(races: Race[]) {
         if (a[i - 2]?.winningSlot) winningSlots.push(a[i - 2]?.winningSlot);
         if (a[i - 3]?.winningSlot) winningSlots.push(a[i - 3]?.winningSlot);
 
-
-        console.log(`winningSlots=${winningSlots.join(",")}`);
+        // console.log(`winningSlots=${winningSlots.join(",")}`);
         winningSlots.sort((a, b) => a - b);
         if (winningSlots.length > 0) {
             let newWinningSlots = [...new Set(winningSlots)];
@@ -381,14 +390,14 @@ async function generateBetsStrategyD(races: Race[]) {
                 }
             } else {
                 newWinningSlots.sort((a, b) => a - b);
-                newWinningSlots.splice(0,1);
+                newWinningSlots.splice(0, 1);
                 for (const slot of newWinningSlots) {
                     r.bets.push({ slot, cost: 200 });
                 }
             }
         };
-        
-        console.log(`bets=${r.bets.map(b=>b.slot).join(",")}`);
+
+        // console.log(`bets=${r.bets.map(b => b.slot).join(",")}`);
     });
 }
 /**
@@ -532,6 +541,23 @@ async function generateBetsStrategyI(races: Race[]) {
     // console.table(races);
 }
 
+/**
+ * Bet as much as I can
+ * @param races 
+ */
+async function generateBetsStrategyJ(races: Race[]) {
+    races.forEach((r, i, a) => {
+        r.payouts.forEach((payout, index) => {
+            if (payout > 6-(index+1)) {
+                // console.log(`race ${i+1}> betting on slot ${index + 1} for i:${index}, payout ${payout}`);
+                if (![6].includes(index+1)) {
+                    r.bets.push({ slot: index + 1, cost: 200 });                    
+                }
+                
+            }
+        });
+    });
+}
 /**
  * Bet profitable from recommendations
  * Up to 4 bets per race
