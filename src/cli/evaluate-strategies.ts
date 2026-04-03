@@ -85,11 +85,13 @@ async function main() {
         console.log(`
  * Venue and round based`);
         clearBets(races);
-        await generateBetsStrategyI(races);
+        const venueRoundSlotEV = await generateBetsStrategyI(races);
 
         const profit = await calculateProfit(races);
         console.log("profit", profit);
-        console.table(races.map(r=>({...r, payouts: r.payouts.join(","), bets: r.bets.map(b=>b.slot).join(","), won: r.bets.map(b=>b.slot).includes(<number>r.winningSlot)?"YES":"NO"})));
+        // console.table(races.map(r=>({...r, payouts: r.payouts.join(","), bets: r.bets.map(b=>b.slot).join(","), won: r.bets.map(b=>b.slot).includes(<number>r.winningSlot)?"YES":"NO"})));
+
+        console.table (venueRoundSlotEV);
     }
     {
         console.log(`
@@ -476,7 +478,7 @@ async function generateBetsStrategyH(races: Race[]) {
  * then for each race places 2 bets on the top 2 slots by expected value.
  * @param races
  */
-async function generateBetsStrategyI(races: Race[]) {
+async function generateBetsStrategyI(races: Race[]) : Promise<{venue: string, raceNumber: string, "best slots by expected value desc": string}[]> {
     const data_historical = await Bun.file('data_historical.txt').text();
     const lines = data_historical.split("\n");
     const allRaces = [...await parseLines(lines), ...races];
@@ -538,7 +540,23 @@ async function generateBetsStrategyI(races: Race[]) {
         }
     }
 
-    // console.table(races);
+    // return a data structure of consisting of an object of venue-round-slot and with the slots array sorted by expectedValue descending
+    const result: {venue: string, raceNumber: string, "best slots by expected value desc": string}[] = [];
+    for (const [venueRaceNumberKey, slotDetails] of Object.entries(evByVenueRoundSlot)) {
+        // result[venueRaceNumberKey] = [];
+        const slotArr = Object.entries(slotDetails).reduce((acc, [slot, detail]) => {
+            acc.push({slot: Number(slot), pWin: detail.pWin, expectedValue: detail.expectedValue});
+            return acc;
+            },<{slot: number, pWin: number, expectedValue: number}[]>[]);
+        slotArr.sort((a,b)=>b.expectedValue-a.expectedValue);
+
+        result.push({
+            venue: venueRaceNumberKey.split('|')[0]!,
+            raceNumber: venueRaceNumberKey.split('|')[1]!,
+            "best slots by expected value desc": slotArr.map(s=>s.slot).join(', ')
+        })
+    }
+    return result;
 }
 
 /**
@@ -547,15 +565,14 @@ async function generateBetsStrategyI(races: Race[]) {
  */
 async function generateBetsStrategyJ(races: Race[]) {
     races.forEach((r, i, a) => {
-        r.payouts.forEach((payout, index) => {
-            if (payout > 6-(index+1)) {
-                // console.log(`race ${i+1}> betting on slot ${index + 1} for i:${index}, payout ${payout}`);
-                if (![6].includes(index+1)) {
-                    r.bets.push({ slot: index + 1, cost: 200 });                    
+        for (let slot = 1; slot < 6; slot++) {
+            const payout = r.payouts[slot-1]!;
+            if (payout > 6-slot) {
+                if (![6].includes(slot)) {
+                    r.bets.push({ slot, cost: 200 });                    
                 }
-                
             }
-        });
+        };
     });
 }
 /**
