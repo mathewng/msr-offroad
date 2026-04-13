@@ -1,8 +1,11 @@
-import { loadRaces, calculateEmpiricalWinRates } from "../shared/utils";
+import { loadRaces, calculateStats } from "../shared/utils";
 import { trainGBT, predictGBT } from "../core/gbt-engine";
 import { printHeader, printRow, printSummary, SEPARATOR } from "./result-printer";
 import type { BacktestStats } from "./result-printer";
-import type { Race } from "../shared/types";
+import type { Race, BacktestConfig } from "../shared/types";
+import { CONFIG_BET2 } from "../shared/config";
+
+const defaultConfig: BacktestConfig = { ...CONFIG_BET2, ensembleSize: 1 };
 
 function calculateMonsterRates(trainingRaces: Race[]): Record<string, number> {
     const monsterCounts: Record<string, { wins: number, total: number }> = {};
@@ -44,14 +47,14 @@ async function runGBTBacktest(histFile: string | undefined, currFile: string, be
         const chunk = currentRaces.slice(i, i + chunkSize);
         
         // Retrain model before each session using all available history
-        const winRates = calculateEmpiricalWinRates(trainingHistory);
+        const historicalStats = calculateStats(trainingHistory, defaultConfig);
         const monsterRates = calculateMonsterRates(trainingHistory);
-        const gbt = trainGBT(trainingHistory, winRates, monsterRates);
+        const gbt = trainGBT(trainingHistory, historicalStats, monsterRates);
 
         for (const race of chunk) {
             if (race.winningSlot === null) continue;
 
-            const probs = predictGBT(gbt, race, winRates, monsterRates);
+            const probs = predictGBT(gbt, race, historicalStats, monsterRates);
             
             // Betting logic: Find slots where (Prob * Payout) is highest.
             const evs = probs.map((p, i) => p * race.payouts[i]! - 1);
@@ -117,14 +120,14 @@ async function runGBTBacktest(histFile: string | undefined, currFile: string, be
     const latestUpcoming = upcoming.slice(-3);
     if (latestUpcoming.length > 0) {
         // Use latest model for upcoming predictions
-        const winRates = calculateEmpiricalWinRates(trainingHistory);
+        const finalStats = calculateStats(trainingHistory, defaultConfig);
         const monsterRates = calculateMonsterRates(trainingHistory);
-        const gbt = trainGBT(trainingHistory, winRates, monsterRates);
+        const gbt = trainGBT(trainingHistory, finalStats, monsterRates);
 
         console.log("\n--- Latest 3 upcoming races (predictions) ---");
         printHeader();
         for (const race of latestUpcoming) {
-            const probs = predictGBT(gbt, race, winRates, monsterRates);
+            const probs = predictGBT(gbt, race, finalStats, monsterRates);
             const evs = probs.map((p, i) => p * race.payouts[i]! - 1);
             const sortedSlots = evs
                 .map((ev, i) => ({ slot: i + 1, ev }))
@@ -169,7 +172,7 @@ const betLimitStr = getFlagValue(args, "--bet-limit=");
 const betLimit = betLimitStr ? parseInt(betLimitStr, 10) : 2;
 
 const minScoreStr = getFlagValue(args, "--min-score=");
-const minScore = minScoreStr ? parseFloat(minScoreStr) : 0.15;
+const minScore = minScoreStr ? parseFloat(minScoreStr) : -1.0;
 
 runGBTBacktest(histFile, testFile!, betLimit, minScore).catch(console.error);
 

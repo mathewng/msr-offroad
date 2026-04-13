@@ -51,6 +51,8 @@ export interface SlotStat {
     occurrences: number; // Total number of races this slot appeared in
     wins: number; // Total win count for this slot
     winRate: number; // Overall win probability
+    totalPayout: number; // Sum of payouts when this slot won
+    avgPayout: number; // Average payout when this slot won
 }
 
 /**
@@ -64,8 +66,8 @@ export interface StatsResult {
     slotMap: Record<number, SlotStat>;
     /** Maps venue name to slot stats for that venue */
     venueMap: Record<string, Record<number, SlotStat>>;
-    /** Maps round number (1-3) to slot stats for that round */
-    roundMap: Record<number, Record<number, SlotStat>>;
+    /** Maps venue name to round-specific slot stats */
+    venueRoundMap: Record<string, Record<number, Record<number, SlotStat>>>;
 }
 
 /**

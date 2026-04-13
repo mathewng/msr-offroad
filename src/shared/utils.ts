@@ -236,6 +236,7 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
     const slotMap: Record<number, SlotStat> = {};
     const venueMap: Record<string, Record<number, SlotStat>> = {};
     const roundMap: Record<number, Record<number, SlotStat>> = {};
+    const venueRoundMap: Record<string, Record<number, Record<number, SlotStat>>> = {};
 
     // Initialize maps for all 6 slots
     for (let s = 1; s <= 6; s++) {
@@ -244,7 +245,7 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
             1: { occurrences: 0, wins: 0, winRate: 0 },
             2: { occurrences: 0, wins: 0, winRate: 0 },
         };
-        slotMap[s] = { occurrences: 0, wins: 0, winRate: 0 };
+        slotMap[s] = { occurrences: 0, wins: 0, winRate: 0, totalPayout: 0, avgPayout: 0 };
     }
 
     // Accumulate frequency and victory counts
@@ -254,16 +255,26 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
 
         if (r.venue && !venueMap[r.venue]) {
             venueMap[r.venue] = {};
-            for (let s = 1; s <= 6; s++) venueMap[r.venue]![s] = { occurrences: 0, wins: 0, winRate: 0 };
+            for (let s = 1; s <= 6; s++) venueMap[r.venue]![s] = { occurrences: 0, wins: 0, winRate: 0, totalPayout: 0, avgPayout: 0 };
         }
         if (!roundMap[r.raceNumber]) {
             roundMap[r.raceNumber] = {};
-            for (let s = 1; s <= 6; s++) roundMap[r.raceNumber]![s] = { occurrences: 0, wins: 0, winRate: 0 };
+            for (let s = 1; s <= 6; s++) roundMap[r.raceNumber]![s] = { occurrences: 0, wins: 0, winRate: 0, totalPayout: 0, avgPayout: 0 };
+        }
+        if (r.venue && !venueRoundMap[r.venue]) {
+            venueRoundMap[r.venue] = {};
+        }
+        if (r.venue && !venueRoundMap[r.venue]![r.raceNumber]) {
+            venueRoundMap[r.venue]![r.raceNumber] = {};
+            for (let s = 1; s <= 6; s++) venueRoundMap[r.venue]![r.raceNumber]![s] = { occurrences: 0, wins: 0, winRate: 0, totalPayout: 0, avgPayout: 0 };
         }
 
         for (let s = 1; s <= 6; s++) {
             slotMap[s]!.occurrences++;
-            if (s === winningSlot) slotMap[s]!.wins++;
+            if (s === winningSlot) {
+                slotMap[s]!.wins++;
+                slotMap[s]!.totalPayout += r.winningPayout;
+            }
 
             const payout = r.payouts[s - 1] ?? 0;
             const bucket = getPayoutBucket(payout);
@@ -272,11 +283,23 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
 
             if (r.venue) {
                 venueMap[r.venue]![s]!.occurrences++;
-                if (s === winningSlot) venueMap[r.venue]![s]!.wins++;
+                if (s === winningSlot) {
+                    venueMap[r.venue]![s]!.wins++;
+                    venueMap[r.venue]![s]!.totalPayout += r.winningPayout;
+                }
+                
+                venueRoundMap[r.venue]![r.raceNumber]![s]!.occurrences++;
+                if (s === winningSlot) {
+                    venueRoundMap[r.venue]![r.raceNumber]![s]!.wins++;
+                    venueRoundMap[r.venue]![r.raceNumber]![s]!.totalPayout += r.winningPayout;
+                }
             }
             if (r.raceNumber >= 1 && r.raceNumber <= 3) {
                 roundMap[r.raceNumber]![s]!.occurrences++;
-                if (s === winningSlot) roundMap[r.raceNumber]![s]!.wins++;
+                if (s === winningSlot) {
+                    roundMap[r.raceNumber]![s]!.wins++;
+                    roundMap[r.raceNumber]![s]!.totalPayout += r.winningPayout;
+                }
             }
         }
     }
@@ -292,8 +315,19 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
         return (wins + alpha * prior) / (total + alpha);
     };
 
+    /**
+     * Smoothing for Average Payout when Won.
+     * Uses the fact that a typical payout is around 6x (for 6 slots).
+     */
+    const smoothPayout = (totalPayout: number, wins: number) => {
+        const priorPayout = 6.0;
+        const alpha = 2.0; // Small alpha for payout smoothing
+        return (totalPayout + alpha * priorPayout) / (wins + alpha);
+    };
+
     for (let s = 1; s <= 6; s++) {
         slotMap[s]!.winRate = smooth(slotMap[s]!.wins, slotMap[s]!.occurrences, s);
+        slotMap[s]!.avgPayout = smoothPayout(slotMap[s]!.totalPayout, slotMap[s]!.wins);
         for (let b = 0; b < 3; b++) {
             const bStats = bucketMap[s]![b]!;
             bStats.winRate = smooth(bStats.wins, bStats.occurrences, s);
@@ -303,16 +337,27 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
         for (let s = 1; s <= 6; s++) {
             const vStats = venueMap[v]![s]!;
             vStats.winRate = smooth(vStats.wins, vStats.occurrences, s);
+            vStats.avgPayout = smoothPayout(vStats.totalPayout, vStats.wins);
         }
     }
     for (const rnd in roundMap) {
         for (let s = 1; s <= 6; s++) {
             const rStats = roundMap[rnd]![s]!;
             rStats.winRate = smooth(rStats.wins, rStats.occurrences, s);
+            rStats.avgPayout = smoothPayout(rStats.totalPayout, rStats.wins);
+        }
+    }
+    for (const v in venueRoundMap) {
+        for (const rnd in venueRoundMap[v]) {
+            for (let s = 1; s <= 6; s++) {
+                const vrStats = venueRoundMap[v]![rnd]![s]!;
+                vrStats.winRate = smooth(vrStats.wins, vrStats.occurrences, s);
+                vrStats.avgPayout = smoothPayout(vrStats.totalPayout, vrStats.wins);
+            }
         }
     }
 
-    return { bucketMap, slotMap, venueMap, roundMap };
+    return { bucketMap, slotMap, venueMap, roundMap, venueRoundMap };
 }
 
 /**
@@ -329,7 +374,7 @@ export function initializeStats(config: BacktestConfig): StatsResult {
             1: { occurrences: 0, wins: 0, winRate: prior },
             2: { occurrences: 0, wins: 0, winRate: prior },
         };
-        slotMap[s] = { occurrences: 0, wins: 0, winRate: prior };
+        slotMap[s] = { occurrences: 0, wins: 0, winRate: prior, totalPayout: 0, avgPayout: 6.0 };
     }
 
     return {
@@ -337,6 +382,7 @@ export function initializeStats(config: BacktestConfig): StatsResult {
         slotMap,
         venueMap: {},
         roundMap: {},
+        venueRoundMap: {},
     };
 }
 
@@ -354,14 +400,24 @@ export function updateStats(stats: StatsResult, r: Race, config: BacktestConfig)
         stats.venueMap[r.venue] = {};
         for (let s = 1; s <= 6; s++) {
             const prior = config.empiricalWinRates?.[s] ?? EQUAL_SLOT_PROBABILITY;
-            stats.venueMap[r.venue]![s] = { occurrences: 0, wins: 0, winRate: prior };
+            stats.venueMap[r.venue]![s] = { occurrences: 0, wins: 0, winRate: prior, totalPayout: 0, avgPayout: 6.0 };
         }
     }
     if (!stats.roundMap[r.raceNumber]) {
         stats.roundMap[r.raceNumber] = {};
         for (let s = 1; s <= 6; s++) {
             const prior = config.empiricalWinRates?.[s] ?? EQUAL_SLOT_PROBABILITY;
-            stats.roundMap[r.raceNumber]![s] = { occurrences: 0, wins: 0, winRate: prior };
+            stats.roundMap[r.raceNumber]![s] = { occurrences: 0, wins: 0, winRate: prior, totalPayout: 0, avgPayout: 6.0 };
+        }
+    }
+    if (r.venue && !stats.venueRoundMap[r.venue]) {
+        stats.venueRoundMap[r.venue] = {};
+    }
+    if (r.venue && !stats.venueRoundMap[r.venue]![r.raceNumber]) {
+        stats.venueRoundMap[r.venue]![r.raceNumber] = {};
+        for (let s = 1; s <= 6; s++) {
+            const prior = config.empiricalWinRates?.[s] ?? EQUAL_SLOT_PROBABILITY;
+            stats.venueRoundMap[r.venue]![r.raceNumber]![s] = { occurrences: 0, wins: 0, winRate: prior, totalPayout: 0, avgPayout: 6.0 };
         }
     }
 
@@ -371,12 +427,22 @@ export function updateStats(stats: StatsResult, r: Race, config: BacktestConfig)
         return (wins + alpha * prior) / (total + alpha);
     };
 
+    const smoothPayout = (totalPayout: number, wins: number) => {
+        const priorPayout = 6.0;
+        const alpha = 2.0; 
+        return (totalPayout + alpha * priorPayout) / (wins + alpha);
+    };
+
     for (let s = 1; s <= 6; s++) {
         // Update Slot Global Stats
         const sStat = stats.slotMap[s]!;
         sStat.occurrences++;
-        if (s === winningSlot) sStat.wins++;
+        if (s === winningSlot) {
+            sStat.wins++;
+            sStat.totalPayout += r.winningPayout;
+        }
         sStat.winRate = smooth(sStat.wins, sStat.occurrences, s);
+        sStat.avgPayout = smoothPayout(sStat.totalPayout, sStat.wins);
 
         // Update Bucket Stats
         const payout = r.payouts[s - 1] ?? 0;
@@ -390,16 +456,33 @@ export function updateStats(stats: StatsResult, r: Race, config: BacktestConfig)
         if (r.venue) {
             const vStat = stats.venueMap[r.venue]![s]!;
             vStat.occurrences++;
-            if (s === winningSlot) vStat.wins++;
+            if (s === winningSlot) {
+                vStat.wins++;
+                vStat.totalPayout += r.winningPayout;
+            }
             vStat.winRate = smooth(vStat.wins, vStat.occurrences, s);
+            vStat.avgPayout = smoothPayout(vStat.totalPayout, vStat.wins);
+
+            const vrStat = stats.venueRoundMap[r.venue]![r.raceNumber]![s]!;
+            vrStat.occurrences++;
+            if (s === winningSlot) {
+                vrStat.wins++;
+                vrStat.totalPayout += r.winningPayout;
+            }
+            vrStat.winRate = smooth(vrStat.wins, vrStat.occurrences, s);
+            vrStat.avgPayout = smoothPayout(vrStat.totalPayout, vrStat.wins);
         }
 
         // Update Round Stats
         if (r.raceNumber >= 1 && r.raceNumber <= 3) {
             const rndStat = stats.roundMap[r.raceNumber]![s]!;
             rndStat.occurrences++;
-            if (s === winningSlot) rndStat.wins++;
+            if (s === winningSlot) {
+                rndStat.wins++;
+                rndStat.totalPayout += r.winningPayout;
+            }
             rndStat.winRate = smooth(rndStat.wins, rndStat.occurrences, s);
+            rndStat.avgPayout = smoothPayout(rndStat.totalPayout, rndStat.wins);
         }
     }
 

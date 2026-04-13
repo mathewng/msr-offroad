@@ -1,5 +1,5 @@
 import XGBoost from "../../node_modules/decision-tree/lib/xgboost.js";
-import type { Race } from "../shared/types";
+import type { Race, StatsResult } from "../shared/types";
 import { extractFeatures, raceToExamples } from "../shared/features";
 
 export interface GBTModelData {
@@ -9,8 +9,8 @@ export interface GBTModelData {
 /**
  * Trains a GBT model using historical race data.
  */
-export function trainGBT(races: Race[], rates?: Record<number, number>, monsterRates?: Record<string, number>) {
-    const trainingData = races.flatMap(r => raceToExamples(r, rates, monsterRates));
+export function trainGBT(races: Race[], stats?: StatsResult, monsterRates?: Record<string, number>) {
+    const trainingData = races.flatMap(r => raceToExamples(r, stats, monsterRates));
     
     if (trainingData.length === 0) {
         throw new Error("No training data available");
@@ -18,10 +18,10 @@ export function trainGBT(races: Race[], rates?: Record<number, number>, monsterR
 
     const features = Object.keys(trainingData[0]!).filter(k => k !== "won");
     const config = {
-        nEstimators: 100,
-        maxDepth: 5,
-        learningRate: 0.1,
-        objective: "regression" as const, // Use regression to get raw scores for probability
+        nEstimators: 250,
+        maxDepth: 8,
+        learningRate: 0.05,
+        objective: "regression" as const, 
     };
 
     const gbt = new XGBoost("won", features, config);
@@ -36,18 +36,17 @@ export function trainGBT(races: Race[], rates?: Record<number, number>, monsterR
 export function predictGBT(
     gbt: any, 
     race: Race, 
-    rates?: Record<number, number>,
+    stats?: StatsResult,
     monsterRates?: Record<string, number>
 ): number[] {
     const rawScores = race.payouts.map((_, i) => {
-        const features = extractFeatures(race, i, rates, monsterRates);
-        return gbt.predict(features);
+        const features = extractFeatures(race, i, stats, monsterRates);
+        return Math.max(0, gbt.predict(features)); // Ensure non-negative
     });
 
-    // Apply softmax to convert raw scores to probabilities that sum to 1
-    const expScores = rawScores.map(s => Math.exp(s));
-    const sumExp = expScores.reduce((a, b) => a + b, 0);
-    const probs = expScores.map(s => s / (sumExp || 1));
+    // Simple normalization to convert raw regression scores to probabilities that sum to 1
+    const sumScores = rawScores.reduce((a, b) => a + b, 0);
+    const probs = rawScores.map(s => s / (sumScores || 1));
 
     return probs;
 }

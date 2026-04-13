@@ -83,13 +83,25 @@ async function main() {
     }
     {
         console.log(`
- * Venue and round based`);
+ * Venue and round based winrate`);
         clearBets(races);
-        const venueRoundSlotEV = await generateBetsStrategyI(races);
+        const venueRoundSlotWinRate = await generateBetsStrategyI(races);
 
         const profit = await calculateProfit(races);
         console.log("profit", profit);
-        // console.table(races.map(r=>({...r, payouts: r.payouts.join(","), bets: r.bets.map(b=>b.slot).join(","), won: r.bets.map(b=>b.slot).includes(<number>r.winningSlot)?"YES":"NO"})));
+        console.table(races.map(r=>({...r, payouts: r.payouts.join(","), bets: r.bets.map(b=>b.slot).join(","), won: r.bets.map(b=>b.slot).includes(<number>r.winningSlot)?"YES":"NO"})));
+
+        console.table (venueRoundSlotWinRate);
+    }
+    {
+        console.log(`
+ * Venue and round based EV`);
+        clearBets(races);
+        const venueRoundSlotEV = await generateBetsStrategyJ(races);
+
+        const profit = await calculateProfit(races);
+        console.log("profit", profit);
+        console.table(races.map(r=>({...r, payouts: r.payouts.join(","), bets: r.bets.map(b=>b.slot).join(","), won: r.bets.map(b=>b.slot).includes(<number>r.winningSlot)?"YES":"NO"})));
 
         console.table (venueRoundSlotEV);
     }
@@ -97,7 +109,7 @@ async function main() {
         console.log(`
             * Bet as much as I can`);
         clearBets(races);
-        await generateBetsStrategyJ(races);
+        await generateBetsStrategyK(races);
 
         const profit = await calculateProfit(races);
         console.log("profit", profit);
@@ -460,10 +472,10 @@ async function generateBetsStrategyH(races: Race[]) {
         if (!slotEvs) {
             continue;
         }
-        const slotsByEV = (Object.entries(slotEvs) as [string, SlotEV][])
+        const slotsByWinRate = (Object.entries(slotEvs) as [string, SlotEV][])
             .map(([s, ev]) => ({ slot: Number(s), expectedValue: ev.expectedValue }))
             .sort((a, b) => b.expectedValue - a.expectedValue);
-        const top2 = slotsByEV.slice(0, 2);
+        const top2 = slotsByWinRate.slice(0, 2);
         for (const { slot } of top2) {
             r.bets.push({ slot, cost: 200 });
         }
@@ -475,10 +487,98 @@ async function generateBetsStrategyH(races: Race[]) {
 /**
  * Venue and round based strategy.
  * Computes pWin and expected value per (venue, raceNumber, slot) from allRaces,
+ * then for each race places 2 bets on the top 2 slots by win rate.
+ * @param races
+ */
+async function generateBetsStrategyI(races: Race[]) : Promise<{venue: string, raceNumber: string, "best slots by win rate desc": string}[]> {
+    const data_historical = await Bun.file('data_historical.txt').text();
+    const lines = data_historical.split("\n");
+    const allRaces = [...await parseLines(lines), ...races];
+
+    // Group by (venue, raceNumber); for each group compute per-slot wins, occurrences, totalPayout when slot wins
+    type SlotStats = { wins: number; totalPayoutWhenWon: number };
+    const groupKey = (r: Race) => `${r.venue ?? "?"}|${r.raceNumber}`;
+    const byVenueRound: Record<string, { occurrences: number; slots: Record<number, SlotStats> }> = {};
+
+    for (const r of allRaces) {
+        const key = groupKey(r);
+        if (!byVenueRound[key]) {
+            byVenueRound[key] = {
+                occurrences: 0,
+                slots: {} as Record<number, SlotStats>,
+            };
+            for (let s = 1; s <= 6; s++) {
+                byVenueRound[key]!.slots[s] = { wins: 0, totalPayoutWhenWon: 0 };
+            }
+        }
+        const group = byVenueRound[key]!;
+        group.occurrences++;
+        const slot = r.winningSlot;
+        group.slots[slot]!.wins++;
+        group.slots[slot]!.totalPayoutWhenWon += r.winningPayout;
+    }
+
+    // Compute pWin and expected value for each (venue, raceNumber, slot)
+    type SlotWinRate = { pWin: number; winRate: number };
+    const evByVenueRoundSlot: Record<string, Record<number, SlotWinRate>> = {};
+    for (const key of Object.keys(byVenueRound)) {
+        const group = byVenueRound[key]!;
+        evByVenueRoundSlot[key] = {};
+        for (let slot = 1; slot <= 6; slot++) {
+            const slotStat = group.slots[slot]!;
+            const { wins, totalPayoutWhenWon } = slotStat;
+            const pWin = group.occurrences > 0 ? wins / group.occurrences : 0;
+            const avgPayoutWhenWon = wins > 0 ? totalPayoutWhenWon / wins : 0;
+            const pLose = 1 - pWin;
+            const expectedValue = pWin * avgPayoutWhenWon - pLose * 1;
+            evByVenueRoundSlot[key][slot] = { pWin, expectedValue };
+        }
+    }
+
+
+    // For each race, place 2 bets on the top 2 slots by win rate
+    for (const r of races) {
+        const key = groupKey(r);
+        const slotEvs = evByVenueRoundSlot[key];
+        if (!slotEvs) {
+            continue;
+        }
+        const slotsByWinRate = (Object.entries(slotEvs) as [string, SlotWinRate][])
+            .map(([s, ev]) => ({ slot: Number(s), winRate: ev.winRate }))
+            .sort((a, b) => b.winRate - a.winRate);
+        const top2 = slotsByWinRate.slice(0, 2);
+        for (const { slot } of top2) {
+            r.bets.push({ slot, cost: 200 });
+        }
+    }
+
+    // return a data structure of consisting of an object of venue-round-slot and with the slots array sorted by expectedValue descending
+    const result: {venue: string, raceNumber: string, "best slots by win rate desc": string}[] = [];
+    for (const [venueRaceNumberKey, slotDetails] of Object.entries(evByVenueRoundSlot)) {
+        // result[venueRaceNumberKey] = [];
+        const slotArr = Object.entries(slotDetails).reduce((acc, [slot, detail]) => {
+            acc.push({slot: Number(slot), pWin: detail.pWin, expectedValue: detail.expectedValue});
+            return acc;
+            },<{slot: number, pWin: number, expectedValue: number}[]>[]);
+        slotArr.sort((a,b)=>b.pWin-a.pWin);
+
+        result.push({
+            venue: venueRaceNumberKey.split('|')[0]!,
+            raceNumber: venueRaceNumberKey.split('|')[1]!,
+            "best slots by win rate desc": slotArr.map(s=>s.slot).join(', ')
+        })
+    }
+    return result;
+}
+
+
+/**
+ * Venue and round based strategy.
+ * Computes pWin and expected value per (venue, raceNumber, slot) from allRaces,
  * then for each race places 2 bets on the top 2 slots by expected value.
  * @param races
  */
-async function generateBetsStrategyI(races: Race[]) : Promise<{venue: string, raceNumber: string, "best slots by expected value desc": string}[]> {
+async function generateBetsStrategyJ(races: Race[]) : Promise<{venue: string, raceNumber: string, "best slots by expected value desc": string}[]> {
     const data_historical = await Bun.file('data_historical.txt').text();
     const lines = data_historical.split("\n");
     const allRaces = [...await parseLines(lines), ...races];
@@ -531,10 +631,10 @@ async function generateBetsStrategyI(races: Race[]) : Promise<{venue: string, ra
         if (!slotEvs) {
             continue;
         }
-        const slotsByEV = (Object.entries(slotEvs) as [string, SlotEV][])
+        const slotsByWinRate = (Object.entries(slotEvs) as [string, SlotEV][])
             .map(([s, ev]) => ({ slot: Number(s), expectedValue: ev.expectedValue }))
             .sort((a, b) => b.expectedValue - a.expectedValue);
-        const top2 = slotsByEV.slice(0, 2);
+        const top2 = slotsByWinRate.slice(0, 2);
         for (const { slot } of top2) {
             r.bets.push({ slot, cost: 200 });
         }
@@ -563,7 +663,7 @@ async function generateBetsStrategyI(races: Race[]) : Promise<{venue: string, ra
  * Bet as much as I can
  * @param races 
  */
-async function generateBetsStrategyJ(races: Race[]) {
+async function generateBetsStrategyK(races: Race[]) {
     races.forEach((r, i, a) => {
         for (let slot = 1; slot < 6; slot++) {
             const payout = r.payouts[slot-1]!;

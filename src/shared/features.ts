@@ -1,4 +1,4 @@
-import type { Race } from "./types";
+import type { Race, StatsResult } from "./types";
 
 /**
  * Feature set for a single slot in a race.
@@ -6,11 +6,9 @@ import type { Race } from "./types";
  */
 export interface RaceFeatures {
     slot: number;
-    venue: string;
     round: number;
     time: number;
     payout: number;
-    monster: string;
     avgPayout: number;
     payoutRank: number;
     isFavorite: number; // 1 if lowest payout in race
@@ -18,6 +16,11 @@ export interface RaceFeatures {
     logPayout: number; // Math.log(payout)
     slotWinRate: number; // Historical win rate for this slot
     monsterWinRate: number; // Historical win rate for the monster
+    venueWinRate: number; // Historical win rate for this slot at this venue
+    roundWinRate: number; // Historical win rate for this slot in this round
+    venueRoundWinRate: number; // Historical win rate for this slot at this venue AND round
+    venueRoundAvgPayout: number; // Historical average payout when winning at this venue AND round
+    venueRoundEV: number; // Historical expected value for this venue AND round
 }
 
 /**
@@ -26,7 +29,7 @@ export interface RaceFeatures {
 export function extractFeatures(
     race: Race, 
     slotIndex: number, 
-    rates?: Record<number, number>,
+    stats?: StatsResult,
     monsterRates?: Record<string, number>
 ): RaceFeatures {
     const slot = slotIndex + 1;
@@ -43,20 +46,36 @@ export function extractFeatures(
     let timeHour = 12;
     if (timeStr.includes("6pm") || timeStr.includes("18:00")) timeHour = 18;
 
+    const venue = race.venue ?? "Unknown";
+    const round = race.raceNumber;
+
+    const slotWinRate = stats?.slotMap?.[slot]?.winRate ?? 0.16;
+    const monsterWinRate = monsterRates?.[race.players?.[slotIndex] ?? "Human"] ?? 0.16;
+    const venueWinRate = stats?.venueMap?.[venue]?.[slot]?.winRate ?? slotWinRate;
+    const roundWinRate = stats?.roundMap?.[round]?.[slot]?.winRate ?? slotWinRate;
+    const venueRoundWinRate = stats?.venueRoundMap?.[venue]?.[round]?.[slot]?.winRate ?? venueWinRate;
+    const venueRoundAvgPayout = stats?.venueRoundMap?.[venue]?.[round]?.[slot]?.avgPayout ?? 6.0;
+    
+    // Historical EV calculation: pWin * avgPayout - (1 - pWin)
+    const venueRoundEV = (venueRoundWinRate * venueRoundAvgPayout) - (1 - venueRoundWinRate);
+
     return {
         slot,
-        venue: race.venue ?? "Unknown",
-        round: race.raceNumber,
+        round,
         time: timeHour,
         payout,
-        monster: race.players?.[slotIndex] ?? "Human",
         avgPayout,
         payoutRank,
         isFavorite,
         payoutDeviation: payout / (avgPayout || 1),
         logPayout: Math.log(payout || 1),
-        slotWinRate: (rates as any)?.[slot] ?? (rates as any)?.[slot.toString()] ?? 0.16,
-        monsterWinRate: (monsterRates as any)?.[race.players?.[slotIndex] ?? "Human"] ?? 0.16,
+        slotWinRate,
+        monsterWinRate,
+        venueWinRate,
+        roundWinRate,
+        venueRoundWinRate,
+        venueRoundAvgPayout,
+        venueRoundEV,
     };
 }
 
@@ -66,13 +85,13 @@ export function extractFeatures(
  */
 export function raceToExamples(
     race: Race, 
-    rates?: Record<number, number>,
+    stats?: StatsResult,
     monsterRates?: Record<string, number>
 ): (RaceFeatures & { won: number })[] {
     if (race.winningSlot === null) return [];
     
     return race.payouts.map((_, i) => {
-        const features = extractFeatures(race, i, rates, monsterRates);
+        const features = extractFeatures(race, i, stats, monsterRates);
         return {
             ...features,
             won: (i + 1) === race.winningSlot ? 1 : 0,

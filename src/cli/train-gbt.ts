@@ -1,5 +1,22 @@
-import { loadRaces, calculateEmpiricalWinRates } from "../shared/utils";
+import { loadRaces, calculateStats } from "../shared/utils";
 import { trainGBT, saveGBTModel } from "../core/gbt-engine";
+import { raceToExamples } from "../shared/features";
+import type { BacktestConfig } from "../shared/types";
+
+const defaultConfig: BacktestConfig = {
+    betLimit: 2,
+    ensembleSize: 10,
+    chunkSize: 50,
+    trainingIterations: 100,
+    trainingRestarts: 3,
+    convergenceTolerance: 0.001,
+    maxWorkers: 4,
+    hmmStates: 6,
+    hmmObservations: 18,
+    scoreWeights: { historical: 0.5, hmm: 0.5 },
+    minScoreThreshold: 0.15,
+    priorWeight: 0.1,
+};
 
 async function main() {
     const args = process.argv.slice(2);
@@ -10,8 +27,6 @@ async function main() {
     let trainingRaces: any[] = [];
     for (const f of files) {
         const races = await loadRaces(f);
-        // Seen races have a winningSlot (1-6). 
-        // Unseen (blank) and Unrecorded (?) races have winningSlot === null and are ignored for training.
         const seen = races.filter(r => r.winningSlot !== null);
         trainingRaces = trainingRaces.concat(seen);
     }
@@ -21,8 +36,8 @@ async function main() {
         return;
     }
 
-    // Calculate win rates for feature engineering ONLY using training data
-    const winRates = calculateEmpiricalWinRates(trainingRaces);
+    // Calculate full stats for feature engineering ONLY using training data
+    const stats = calculateStats(trainingRaces, defaultConfig);
 
     // Calculate monster win rates ONLY using training data
     const monsterCounts: Record<string, { wins: number, total: number }> = {};
@@ -40,10 +55,14 @@ async function main() {
     }
     
     console.log(`Training on ${trainingRaces.length} races...`);
-    const gbt = trainGBT(trainingRaces, winRates, monsterRates);
+    const trainingData = trainingRaces.flatMap(r => raceToExamples(r, stats, monsterRates));
+    const gbt = trainGBT(trainingRaces, stats, monsterRates);
     
     console.log("Model trained successfully.");
     
+    const trainingAccuracy = gbt.evaluate(trainingData);
+    console.log(`Training Accuracy: ${(trainingAccuracy * 100).toFixed(2)}%`);
+
     const importance = gbt.getFeatureImportance();
     console.log("\n--- Feature Importance ---");
     Object.entries(importance)
@@ -57,8 +76,8 @@ async function main() {
     console.log(`\nModel saved to ${modelPath}`);
 
     // Save rates for backtest-gbt
-    await Bun.write("slots_won.json", JSON.stringify(winRates));
-    console.log("Win rates saved to slots_won.json");
+    await Bun.write("slots_won.json", JSON.stringify(stats));
+    console.log("Full stats saved to slots_won.json");
 
     await Bun.write("monsters_won.json", JSON.stringify(monsterRates));
     console.log("Monster rates saved to monsters_won.json");
