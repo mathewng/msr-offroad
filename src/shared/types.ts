@@ -68,6 +68,8 @@ export interface StatsResult {
     venueMap: Record<string, Record<number, SlotStat>>;
     /** Maps venue name to round-specific slot stats */
     venueRoundMap: Record<string, Record<number, Record<number, SlotStat>>>;
+    /** Maps round number (1-3) to slot stats */
+    roundMap: Record<number, Record<number, SlotStat>>;
 }
 
 /**

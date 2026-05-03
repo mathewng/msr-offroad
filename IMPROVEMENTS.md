@@ -1,60 +1,44 @@
-# HMM & GBT Improvement Roadmap
+# HMM Modeling Roadmap: Beyond Discrete Chunking
 
-This document outlines the strategic differences between the current modeling approaches and provides a roadmap for moving the `msr-offroad` prediction engine toward State-of-the-Art (SOTA) performance.
+This document outlines the transition from heuristic-based "chunking" to mathematically rigorous HMM-native temporal adaptation strategies.
 
-## 1. HMM Engine: Baum-Welch vs. Viterbi
+## 1. The "Chunk Size" Limitation
+Currently, the system uses a `chunkSize` (default: 9) to trigger batch retraining. While effective (achieving peak ROI at 9), this is a "meta-parameter" external to the HMM itself, leading to jerky adaptation and "lag" in regime detection.
 
-| Algorithm | Primary Role | Suitability for Racing |
-| :--- | :--- | :--- |
-| **Baum-Welch** | **Training & Inference** | **Superior**: This "Soft EM" approach sums over all possible regime paths. It handles the high noise/uncertainty of racing without overfitting to outliers. |
-| **Viterbi** | **Diagnostics & Display** | **Secondary**: Useful for identifying the single most likely current "Regime" for the UI, but too brittle for core probability estimation as it ignores all but the "best" path. |
+## 2. Venue-Aware Regime Modeling (New Discovery)
 
-### Recommendation
-Continue using **Baum-Welch** (specifically the Forward algorithm) for the core prediction logic to maintain Bayesian-optimal forecasting.
+Empirical analysis confirms that venues change every 3–6 races, and each venue has distinct win-rate biases (e.g., Slot 5 in Cactus Desert has ~2.0 EV). The "magic" chunk size of 9 is likely a heuristic approximation of these 3–6 race venue windows.
 
----
+### A. Venue-Boundary Resets
+Instead of a fixed `chunkSize`, trigger HMM retraining or memory flushing exactly when the `venue` changes.
+* **Benefit**: Aligns the model's "refresh" cycle with the actual game mechanics, preventing cross-contamination between different courses.
 
-## 2. GBT Engine: XGBoost vs. The Competition
+### B. Venue-Specific Priors
+Use the historical performance of a venue as the Bayesian Prior for the HMM's emission matrix.
+* **Implementation**: When entering a venue, initialize the HMM's $\mathbf{B}$ matrix using the normalized historical win rates for that specific location.
+* **Benefit**: Allows the model to start with a "warm" understanding of the venue's favorites while using HMM to detect real-time deviations or "streaks" within that session.
 
-| Model | Strengths | Use Case in msr-offroad |
-| :--- | :--- | :--- |
-| **XGBoost** | Tabular power, Payout ranking. | Currently used in `backtest-gbt.ts` for cross-sectional predictions. |
-| **CatBoost** | Native categorical handling. | **SOTA Upgrade**: Better at handling Monster/Player names and Venue IDs without complex encoding. |
-| **HMM-Ensemble** | Temporal context/Memory. | Best for identifying "streaks" or session-specific patterns. |
+### C. Round-Number Dynamics
+Round 3 in a session exhibits a significant shift in win probability: Slot 1/2 win rates jump from ~23% to ~30%, while Slot 6 effectively collapses (from ~9% to ~3%). This interaction is often venue-dependent (e.g., strongest in Ludibrium and Deep Sea World).
+* **Concept**: Intra-session "fatigue" or course-learning bias.
+* **Benefit**: Treating Round 3 as a specific sub-regime allows for much more aggressive betting on front-runners in the session finale.
 
----
+## 3. Venue x Round number Interaction
+The "Round 3 Bias" is not universal—it is venue-dependent:
 
-## 3. The "Hybrid Engine": Stacking & Ensembling
+Ludibrium: Massive significance. Slot 1/2 win rate jumps from 17% (R1) to 35% (R3).
+Deep Sea World: Significant jump from 24% (R1) to 31% (R3).
+Aqua Road: Counter-trend. Actually slightly declines or stays flat for Slots 1/2 in Round 3.
+Minar Forest: Jumps from 13% (R1) to 22% (R2/R3).
 
-The single biggest performance gain is moving from parallel models to an **Ensemble Stacking** architecture.
+The round number is a powerful secondary feature. It shouldn't just be used for "chunking" boundaries.
 
-### Immediate Improvement: Blending
-Modify `prediction-engine.ts` to blend the HMM and GBT probabilities:
-```typescript
-const finalProb = (hmmProb * 0.4) + (gbtProb * 0.6);
-```
+Actionable Insights: The HMM should ideally be "Round-Aware," perhaps by using a different transition matrix for Round 3 or including the round number in the observation space.
 
-### Future SOTA: Meta-Modeling
-1.  **Level 0 Inputs**: Train HMM, GBT, and Payout Stats.
-2.  **Level 1 Meta-Model**: Train a simple Logistic/Ridge Regression model that takes the *outputs* of Level 0 as *inputs* to decide the final confidence score.
+## 4. Implementation Priorities
 
----
-
-## 4. Feature Engineering: Beyond Static Metadata
-
-To improve the GBT/XGBoost model, we must introduce **Memory** into its features:
-
-*   **Lag Features**: Added column for "Winner of Round - 1".
-*   **Rolling Stats**: Instead of total historical win rate, use:
-    *   `last_5_win_rate` (Recency)
-    *   `last_20_win_rate` (Stability)
-*   **EMA (Exponential Moving Average)**: Give higher weight to more recent wins/losses for each monster.
-
----
-
-## 5. Next Steps for Implementation
-
-1.  **[ ] Ensemble Integration**: Integrate `gbt-engine.ts` directly into the main `backtest.ts` to compare ensembled EV vs. standalone EV.
-2.  **[ ] HMM-Augmented GBT**: Add the HMM "Consensus Regime" index as a categorical feature to the GBT training set.
-3.  **[ ] CatBoost Trial**: Test if CatBoost yields better accuracy than the current XGBoost implementation on Monster/Venue features.
-4.  **[ ] Sliding Window Backtest**: Optimize `trainingRestarts` and `trainingIterations` based on the most recent 100 races only (Recency focus).
+1.  **[ ] Implement Venue x Round Priors in HMM**: Update the HMM prediction engine (`src/core/hmm.ts`) to initialize its emission matrix (or provide a Bayesian prior) based on the specific Venue *and* Round number combo (leveraging `StatsResult.venueRoundMap`).
+2.  **[ ] Venue/Round Aware Backtesting**: Modify the backtester (`src/backtest/backtest.ts`) to extract current venue and round number for each prediction and pass it to the prediction engine. Add flags like `--use-venue-round-priors` to test this approach against the baseline.
+3.  **[ ] Transition to MAP Adaptation**: Modify `src/core/hmm.ts` to accept `seedParams` as a Bayesian prior rather than just a starting point for random perturbation, allowing the venue x round prior to stabilize the model.
+4.  **[ ] Venue-Boundary Resets**: Implement and test resetting the HMM state or flushing the observation window exactly when the venue changes (e.g., `--reset-on-venue`), abandoning the fixed 9-race chunking heuristic.
+5.  **[ ] Online Update Prototype**: Create a lightweight version of the prediction engine that updates a single "master" HMM online after every race, rather than retraining from scratch on sliding windows.

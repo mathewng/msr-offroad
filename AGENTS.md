@@ -10,11 +10,12 @@
 
 - **src/** – All TypeScript source code.
   - **src/shared/** – `types.ts`, `utils.ts`, `config.ts` (used across the app).
-  - **src/core/** – `hmm.ts`, `random-pool.ts`, `prediction-engine.ts` (HMM model and prediction).
+  - **src/core/** – `hmm.ts`, `gbt-engine.ts`, `random-pool.ts`, `prediction-engine.ts` (HMM and GBT models).
   - **src/workers/** – `worker-pool.ts`, `hmm-worker.ts` (concurrency).
-  - **src/backtest/** – `backtest.ts`, `backtest-args.ts`, `result-printer.ts`, `hmm-diagnostics.ts`.
+  - **src/backtest/** – `backtest.ts`, `backtest-gbt.ts`, `backtest-args.ts`, `result-printer.ts`, `hmm-diagnostics.ts`.
   - **src/cli/** – `evaluate-strategies.ts`, `analyze-data.ts`, `data-check.ts`, `investigate-factors.ts`, `optimizer.ts`, `train-gbt.ts`, `experiment-recency.ts`.
 - Data files (`data_historical.txt`, `data_current.txt`, etc.) remain in project root.
+- See `IMPROVEMENTS.md` for the modeling roadmap and planned architectural changes.
 
 ## Build, Lint, and Test Commands
 
@@ -30,7 +31,13 @@
 ### Other Commands
 
 - `bun run benchmark` - Run memory benchmark (memory-benchmark.ts)
-- `./backtest.sh` - Run backtests with multiple strategies (yield, bet2, eff)
+- `./backtest.sh` - Run HMM backtests with multiple strategies (yield, bet2, eff)
+- `./gbt_backtest.sh` - Run GBT backtests
+- `./gbt_train.sh` - Train GBT models
+- `./run.sh` - General run script
+- `bun check_ev.ts` - Check Expected Value statistics
+- `bun check_stats.ts` - Check general statistics
+- `bun check_winners.ts` - Check winner frequency and distribution
 
 ### Test Commands
 
@@ -86,6 +93,9 @@
 
 - `data_historical.txt` - Historical race data
 - `data_current.txt` - Current season data
+- `data_all.txt` - Combined historical and current data
+- `data_train.txt` - Training data subset
+- `data_test.txt` - Testing data subset
 
 ## Bun-Specific Notes
 

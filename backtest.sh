@@ -4,6 +4,7 @@ bun src/backtest/backtest.ts data_historical.txt data_current.txt --print-config
 for a in `seq 1 10`
 do bun src/backtest/backtest.ts data_historical.txt data_current.txt --yield | tail -n14 | lolcat-rs
 done
+bun src/backtest/backtest.ts data_historical.txt data_current.txt --yield | lolcat-rs
 echo
 echo
 echo
