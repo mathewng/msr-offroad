@@ -531,7 +531,7 @@ async function generateBetsStrategyI(races: Race[]) : Promise<{venue: string, ra
             const avgPayoutWhenWon = wins > 0 ? totalPayoutWhenWon / wins : 0;
             const pLose = 1 - pWin;
             const expectedValue = pWin * avgPayoutWhenWon - pLose * 1;
-            evByVenueRoundSlot[key][slot] = { pWin, expectedValue };
+            evByVenueRoundSlot[key][slot] = { pWin, expectedValue, winRate: pWin * 100 };
         }
     }
 
