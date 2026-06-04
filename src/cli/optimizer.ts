@@ -55,12 +55,7 @@ async function runBacktest(params: BacktestParams, highestProfit: number): Promi
 async function runSingleBacktest(params: BacktestParams): Promise<number> {
     return new Promise((resolve, reject) => {
         // Build command arguments for backtest execution
-        const args = [
-            "data_historical.txt",
-            "data_current.txt",
-            `--historical-weight=${params.scoreWeights.historical}`,
-            `--hmm-weight=${params.scoreWeights.hmm}`,
-        ];
+        const args = ["data_historical.txt", "data_current.txt", `--historical-weight=${params.scoreWeights.historical}`, `--hmm-weight=${params.scoreWeights.hmm}`];
 
         // Add bet limit flag based on params.betLimit value
         if (params.betLimit === 1) {
@@ -178,10 +173,7 @@ async function optimizeSettings() {
                     highestMaxProfit = maxProfit;
                     bestMaxParams = params;
                     results = results.filter(
-                        (r) =>
-                            r.betLimit !== betLimit ||
-                            (r.betLimit === betLimit && r.type !== "max profit") ||
-                            (r.betLimit === betLimit && r.type === "max profit" && r.profit === highestMaxProfit),
+                        (r) => r.betLimit !== betLimit || (r.betLimit === betLimit && r.type !== "max profit") || (r.betLimit === betLimit && r.type === "max profit" && r.profit === highestMaxProfit),
                     );
                     results.push({
                         type: "max profit",

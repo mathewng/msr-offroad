@@ -179,7 +179,7 @@ export class HMM {
                 }
 
                 // Add diversity noise to ensure even identical windows lead to different specialization
-                val = (val * (0.8 + rng.next() * 0.4)) + eps;
+                val = val * (0.8 + rng.next() * 0.4) + eps;
                 this.B[offset + k] = val;
                 rowSum += val;
             }
@@ -495,8 +495,7 @@ export class HMM {
                         // Unroll by 2 to balance N=6/8 constraints
                         const limit = N - (N % 2);
                         for (; j < limit; j += 2) {
-                            dot += this.A[iOff + j]! * bBeta[j]! +
-                                this.A[iOff + j + 1]! * bBeta[j + 1]!;
+                            dot += this.A[iOff + j]! * bBeta[j]! + this.A[iOff + j + 1]! * bBeta[j + 1]!;
                         }
                         for (; j < N; j++) dot += this.A[iOff + j]! * bBeta[j]!;
 
@@ -570,14 +569,14 @@ export class HMM {
                 for (let i = 0; i < N; i++) {
                     const iOff = i * N;
                     // Transitions: A[i][j] = (sum(xi_tij) + eps) / (sum(gamma_ti) + N * eps)
-                    const invDenomA = 1.0 / (denomA[i]! + (N * eps));
+                    const invDenomA = 1.0 / (denomA[i]! + N * eps);
                     for (let j = 0; j < N; j++) {
                         this.A[iOff + j] = (accumA[iOff + j]! + eps) * invDenomA;
                     }
 
                     const iOffB = i * M;
                     // Emissions: B[i][k] = (sum(gamma_ti where o_t = k) + eps) / (sum(gamma_ti) + M * eps)
-                    const invDenomB = 1.0 / (denomB[i]! + (M * eps));
+                    const invDenomB = 1.0 / (denomB[i]! + M * eps);
                     for (let k = 0; k < M; k++) {
                         this.B[iOffB + k] = (accumB[iOffB + k]! + eps) * invDenomB;
                     }
@@ -647,7 +646,8 @@ export class HMM {
                 // Unroll by 4 for better pipeline utilization
                 const limit4 = N - (N % 4);
                 for (; i < limit4; i += 4) {
-                    sum += alpha[ptOff + i]! * this.At[jOff + i]! +
+                    sum +=
+                        alpha[ptOff + i]! * this.At[jOff + i]! +
                         alpha[ptOff + i + 1]! * this.At[jOff + i + 1]! +
                         alpha[ptOff + i + 2]! * this.At[jOff + i + 2]! +
                         alpha[ptOff + i + 3]! * this.At[jOff + i + 3]!;
@@ -706,10 +706,7 @@ export class HMM {
                     let j = 0;
                     const limit4 = N - (N % 4);
                     for (; j < limit4; j += 4) {
-                        sum += this.A[iOff + j]! * bBeta[j]! +
-                            this.A[iOff + j + 1]! * bBeta[j + 1]! +
-                            this.A[iOff + j + 2]! * bBeta[j + 2]! +
-                            this.A[iOff + j + 3]! * bBeta[j + 3]!;
+                        sum += this.A[iOff + j]! * bBeta[j]! + this.A[iOff + j + 1]! * bBeta[j + 1]! + this.A[iOff + j + 2]! * bBeta[j + 2]! + this.A[iOff + j + 3]! * bBeta[j + 3]!;
                     }
                     for (; j < N; j++) {
                         sum += this.A[iOff + j]! * bBeta[j]!;
@@ -810,7 +807,8 @@ export class HMM {
                     let i = 0;
                     const limit = N - (N % 8);
                     for (; i < limit; i += 8) {
-                        sum += stateDistribution[i]! * this.At[jOff + i]! +
+                        sum +=
+                            stateDistribution[i]! * this.At[jOff + i]! +
                             stateDistribution[i + 1]! * this.At[jOff + i + 1]! +
                             stateDistribution[i + 2]! * this.At[jOff + i + 2]! +
                             stateDistribution[i + 3]! * this.At[jOff + i + 3]! +

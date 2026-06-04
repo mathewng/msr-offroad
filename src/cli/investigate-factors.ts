@@ -31,13 +31,7 @@ function loadRaces(path: string): Race[] {
 }
 
 /** Chi-square test for independence: factor (rows) vs winning slot (cols 1-6). */
-function chiSquareIndependence(
-    label: string,
-    table: Record<string, Record<number, number>>,
-    totalByRow: Record<string, number>,
-    totalByCol: Record<number, number>,
-    grandTotal: number,
-): void {
+function chiSquareIndependence(label: string, table: Record<string, Record<number, number>>, totalByRow: Record<string, number>, totalByCol: Record<number, number>, grandTotal: number): void {
     const rows = Object.keys(table);
     const cols = [1, 2, 3, 4, 5, 6];
     let chi2 = 0;
@@ -60,11 +54,7 @@ function chiSquareIndependence(
 }
 
 /** Print win-rate table: for each factor level, show win % per slot. */
-function printWinRates(
-    label: string,
-    table: Record<string, Record<number, number>>,
-    totalByRow: Record<string, number>,
-): void {
+function printWinRates(label: string, table: Record<string, Record<number, number>>, totalByRow: Record<string, number>): void {
     const rows = Object.keys(table).sort();
     console.log(`  ${label}:`);
     for (const r of rows) {
@@ -182,9 +172,7 @@ function runInvestigation(races: Race[]) {
     const coldBySlot: Record<number, { wins: number; trials: number }> = {};
     for (let s = 1; s <= 6; s++) coldBySlot[s] = { wins: 0, trials: 0 };
     for (let i = K; i < valid.length; i++) {
-        const recentWinners = valid
-            .slice(i - K, i)
-            .map((r) => r.winningSlot!);
+        const recentWinners = valid.slice(i - K, i).map((r) => r.winningSlot!);
         const nextWinner = valid[i]!.winningSlot!;
         for (let s = 1; s <= 6; s++) {
             if (recentWinners.every((w) => w !== s)) {

@@ -26,15 +26,10 @@ export interface RaceFeatures {
 /**
  * Extracts features for a specific slot in a given race.
  */
-export function extractFeatures(
-    race: Race, 
-    slotIndex: number, 
-    stats?: StatsResult,
-    monsterRates?: Record<string, number>
-): RaceFeatures {
+export function extractFeatures(race: Race, slotIndex: number, stats?: StatsResult, monsterRates?: Record<string, number>): RaceFeatures {
     const slot = slotIndex + 1;
     const payout = race.payouts[slotIndex] ?? 0;
-    
+
     // Sort payouts to find rank and average
     const sortedPayouts = [...race.payouts].sort((a, b) => a - b);
     const avgPayout = race.payouts.reduce((a, b) => a + b, 0) / race.payouts.length;
@@ -55,9 +50,9 @@ export function extractFeatures(
     const roundWinRate = stats?.roundMap?.[round]?.[slot]?.winRate ?? slotWinRate;
     const venueRoundWinRate = stats?.venueRoundMap?.[venue]?.[round]?.[slot]?.winRate ?? venueWinRate;
     const venueRoundAvgPayout = stats?.venueRoundMap?.[venue]?.[round]?.[slot]?.avgPayout ?? 6.0;
-    
+
     // Historical EV calculation: pWin * avgPayout - (1 - pWin)
-    const venueRoundEV = (venueRoundWinRate * venueRoundAvgPayout) - (1 - venueRoundWinRate);
+    const venueRoundEV = venueRoundWinRate * venueRoundAvgPayout - (1 - venueRoundWinRate);
 
     return {
         slot,
@@ -83,18 +78,14 @@ export function extractFeatures(
  * Converts a Race and its outcome into a set of training examples.
  * Each race produces 6 examples (one per slot).
  */
-export function raceToExamples(
-    race: Race, 
-    stats?: StatsResult,
-    monsterRates?: Record<string, number>
-): (RaceFeatures & { won: number })[] {
+export function raceToExamples(race: Race, stats?: StatsResult, monsterRates?: Record<string, number>): (RaceFeatures & { won: number })[] {
     if (race.winningSlot === null) return [];
-    
+
     return race.payouts.map((_, i) => {
         const features = extractFeatures(race, i, stats, monsterRates);
         return {
             ...features,
-            won: (i + 1) === race.winningSlot ? 1 : 0,
+            won: i + 1 === race.winningSlot ? 1 : 0,
         };
     });
 }

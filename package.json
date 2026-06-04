@@ -5,7 +5,9 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "benchmark": "bun --expose-gc memory-benchmark.ts",
-        "backtest": "bun src/backtest/backtest.ts"
+        "backtest": "bun src/backtest/backtest.ts",
+        "backtest:context": "bun src/backtest/backtest-context.ts data_historical.txt data_current.txt",
+        "predict": "bun src/cli/predict-race.ts"
     },
     "devDependencies": {
         "@types/bun": "latest",

@@ -1,7 +1,7 @@
 /**
  * @file experiment-recency.ts
  * @description Experimental program to determine optimal recency weighting parameters
- * 
+ *
  * This script runs backtests with various recency configurations to find:
  * - Q1: Optimal decay value (0.9, 0.95, 0.97, 0.99, 1.0)
  * - Q2: Whether to enable recency by default
@@ -23,13 +23,7 @@ import { formatCurrency } from "../shared/utils";
  * @param venueDecay - Optional separate decay for venue stats
  * @param roundDecay - Optional separate decay for round stats
  */
-function calculateWeightedStats(
-    races: Race[],
-    decay: number,
-    slotDecay?: number,
-    venueDecay?: number,
-    roundDecay?: number,
-): StatsResult {
+function calculateWeightedStats(races: Race[], decay: number, slotDecay?: number, venueDecay?: number, roundDecay?: number): StatsResult {
     const slotDecayFactor = slotDecay ?? decay;
     const venueDecayFactor = venueDecay ?? decay;
     const roundDecayFactor = roundDecay ?? decay;
@@ -42,7 +36,7 @@ function calculateWeightedStats(
     // Calculate decay weights for each race (most recent = weight 1)
     const raceWeights = races.map((_, idx) => Math.pow(decay, races.length - 1 - idx));
     const totalWeight = raceWeights.reduce((a, b) => a + b, 0);
-    const normalizedWeights = raceWeights.map(w => w / totalWeight);
+    const normalizedWeights = raceWeights.map((w) => w / totalWeight);
 
     for (let r = 0; r < races.length; r++) {
         const race = races[r]!;
@@ -55,7 +49,7 @@ function calculateWeightedStats(
 
         // Initialize slot stats
         if (!slotMap[slot]) {
-            slotMap[slot] = { occurrences: 0, wins: 0, winRate: 1/6 };
+            slotMap[slot] = { occurrences: 0, wins: 0, winRate: 1 / 6 };
         }
         slotMap[slot]!.occurrences += weight;
         slotMap[slot]!.wins += weight;
@@ -65,9 +59,9 @@ function calculateWeightedStats(
             bucketMap[slot] = {};
         }
         if (!bucketMap[slot][bucket]) {
-            bucketMap[slot][bucket] = { occurrences: 0, wins: 0, winRate: 1/6 };
+            bucketMap[slot][bucket] = { occurrences: 0, wins: 0, winRate: 1 / 6 };
         }
-        const bucketStat = bucketMap[slot][bucket] ?? { occurrences: 0, wins: 0, winRate: 1/6 };
+        const bucketStat = bucketMap[slot][bucket] ?? { occurrences: 0, wins: 0, winRate: 1 / 6 };
         bucketStat.occurrences += weight;
         bucketStat.wins += weight;
 
@@ -77,7 +71,7 @@ function calculateWeightedStats(
                 venueMap[race.venue] = {};
             }
             if (!venueMap[race.venue][slot]) {
-                venueMap[race.venue][slot] = { occurrences: 0, wins: 0, winRate: 1/6 };
+                venueMap[race.venue][slot] = { occurrences: 0, wins: 0, winRate: 1 / 6 };
             }
             venueMap[race.venue][slot]!.occurrences += weight;
             venueMap[race.venue][slot]!.wins += weight;
@@ -88,7 +82,7 @@ function calculateWeightedStats(
             roundMap[race.raceNumber] = {};
         }
         if (!roundMap[race.raceNumber][slot]) {
-            roundMap[race.raceNumber][slot] = { occurrences: 0, wins: 0, winRate: 1/6 };
+            roundMap[race.raceNumber][slot] = { occurrences: 0, wins: 0, winRate: 1 / 6 };
         }
         roundMap[race.raceNumber][slot]!.occurrences += weight;
         roundMap[race.raceNumber][slot]!.wins += weight;
@@ -103,7 +97,7 @@ function calculateWeightedStats(
             result[slot] = {
                 occurrences: s.occurrences,
                 wins: s.wins,
-                winRate: s.occurrences > 0 ? s.wins / s.occurrences : 1/6,
+                winRate: s.occurrences > 0 ? s.wins / s.occurrences : 1 / 6,
             };
         }
         return result;
@@ -117,11 +111,11 @@ function calculateWeightedStats(
             result[slot] = {};
             for (const bucketStr of Object.keys(b)) {
                 const bucket = parseInt(bucketStr);
-                const bucketStat = b[bucket] ?? { occurrences: 0, wins: 0, winRate: 1/6 };
+                const bucketStat = b[bucket] ?? { occurrences: 0, wins: 0, winRate: 1 / 6 };
                 result[slot]![bucket] = {
                     occurrences: bucketStat.occurrences,
                     wins: bucketStat.wins,
-                    winRate: bucketStat.occurrences > 0 ? bucketStat.wins / bucketStat.occurrences : 1/6,
+                    winRate: bucketStat.occurrences > 0 ? bucketStat.wins / bucketStat.occurrences : 1 / 6,
                 };
             }
         }
@@ -129,16 +123,10 @@ function calculateWeightedStats(
     };
 
     return {
-        bucketMap: Object.fromEntries(
-            Object.entries(bucketMap).map(([slot, buckets]) => [parseInt(slot), finalizeBucketStats(buckets)])
-        ),
+        bucketMap: Object.fromEntries(Object.entries(bucketMap).map(([slot, buckets]) => [parseInt(slot), finalizeBucketStats(buckets)])),
         slotMap: finalizeStats(slotMap),
-        venueMap: Object.fromEntries(
-            Object.entries(venueMap).map(([venue, slots]) => [venue, finalizeStats(slots)])
-        ),
-        roundMap: Object.fromEntries(
-            Object.entries(roundMap).map(([round, slots]) => [parseInt(round), finalizeStats(slots)])
-        ),
+        venueMap: Object.fromEntries(Object.entries(venueMap).map(([venue, slots]) => [venue, finalizeStats(slots)])),
+        roundMap: Object.fromEntries(Object.entries(roundMap).map(([round, slots]) => [parseInt(round), finalizeStats(slots)])),
     };
 }
 
@@ -162,13 +150,7 @@ async function runBacktestWithRecency(
     }
 
     // Calculate weighted stats
-    const weightedStats = calculateWeightedStats(
-        previousMonthsRaces,
-        recencyDecay,
-        slotDecay,
-        venueDecay,
-        roundDecay,
-    );
+    const weightedStats = calculateWeightedStats(previousMonthsRaces, recencyDecay, slotDecay, venueDecay, roundDecay);
 
     // Override config with weighted stats
     const testConfig = {
@@ -304,12 +286,7 @@ async function runExperiments() {
     for (const decay of decayValues) {
         console.log(`\nTesting decay = ${decay}...`);
         try {
-            const result = await runBacktestWithRecency(
-                prevFile,
-                currFile,
-                CONFIG_HIGHEST_YIELD,
-                decay,
-            );
+            const result = await runBacktestWithRecency(prevFile, currFile, CONFIG_HIGHEST_YIELD, decay);
             decayResults.push({
                 decay,
                 profit: result.totalProfit,
@@ -327,9 +304,7 @@ async function runExperiments() {
     }
 
     // Find best decay
-    const bestDecay = decayResults.reduce((best, current) =>
-        current.roi > best.roi ? current : best
-    );
+    const bestDecay = decayResults.reduce((best, current) => (current.roi > best.roi ? current : best));
     console.log("\n✓ Best decay for HIGHEST_YIELD:");
     console.log(`  Decay: ${bestDecay.decay}, ROI: ${bestDecay.roi.toFixed(2)}%, Profit: ${formatCurrency(bestDecay.profit)}`);
 
@@ -350,21 +325,11 @@ async function runExperiments() {
 
         // Without recency (decay = 1.0)
         try {
-            const without = await runBacktestWithRecency(
-                prevFile,
-                currFile,
-                config,
-                1.0,
-            );
+            const without = await runBacktestWithRecency(prevFile, currFile, config, 1.0);
             console.log(`  Without recency: ROI = ${without.roi.toFixed(2)}%, Profit = ${formatCurrency(without.totalProfit)}`);
 
             // With recency (decay = 0.95)
-            const withRecency = await runBacktestWithRecency(
-                prevFile,
-                currFile,
-                config,
-                0.95,
-            );
+            const withRecency = await runBacktestWithRecency(prevFile, currFile, config, 0.95);
             console.log(`  With recency:    ROI = ${withRecency.roi.toFixed(2)}%, Profit = ${formatCurrency(withRecency.totalProfit)}`);
 
             q2Results.push({
@@ -396,15 +361,7 @@ async function runExperiments() {
         console.log(`  Decay: ${config.decay}, Slot: ${config.slotDecay ?? 0.95}, Venue: ${config.venueDecay ?? 0.95}, Round: ${config.roundDecay ?? 0.95}`);
 
         try {
-            const result = await runBacktestWithRecency(
-                prevFile,
-                currFile,
-                CONFIG_HIGHEST_YIELD,
-                config.decay,
-                config.slotDecay,
-                config.venueDecay,
-                config.roundDecay,
-            );
+            const result = await runBacktestWithRecency(prevFile, currFile, CONFIG_HIGHEST_YIELD, config.decay, config.slotDecay, config.venueDecay, config.roundDecay);
             console.log(`  ROI: ${result.roi.toFixed(2)}%, Profit: ${formatCurrency(result.totalProfit)}`);
             q3Results.push({
                 config: config.name,
@@ -417,9 +374,7 @@ async function runExperiments() {
     }
 
     // Find best per-dimension config
-    const bestQ3Config = q3Results.reduce((best, current) =>
-        current.roi > best.roi ? current : best
-    );
+    const bestQ3Config = q3Results.reduce((best, current) => (current.roi > best.roi ? current : best));
     console.log("\n✓ Best per-dimension config:");
     console.log(`  ${bestQ3Config.config}: ROI = ${bestQ3Config.roi.toFixed(2)}%`);
 
@@ -433,15 +388,13 @@ async function runExperiments() {
     console.log("  Recommendation: Use", bestDecay.decay < 0.97 ? "moderate recency" : "light recency", "decay");
 
     console.log("\nQ2 - Should recency be enabled by default?");
-    const avgImprovement = q2Results.reduce((sum, r) =>
-        sum + (r.withRecency - r.withoutRecency), 0
-    ) / q2Results.length;
+    const avgImprovement = q2Results.reduce((sum, r) => sum + (r.withRecency - r.withoutRecency), 0) / q2Results.length;
     console.log(`  Average ROI improvement: ${avgImprovement.toFixed(2)}%`);
     console.log("  Recommendation:", avgImprovement > 0 ? "Enable by default" : "Keep opt-in");
 
     console.log("\nQ3 - Per-dimension vs uniform decay:");
     console.log(`  Best config: ${bestQ3Config.config} (ROI: ${bestQ3Config.roi.toFixed(2)}%)`);
-    const uniformBest = q3Results.find(r => r.config === "Uniform")?.roi ?? 0;
+    const uniformBest = q3Results.find((r) => r.config === "Uniform")?.roi ?? 0;
     const improvement = bestQ3Config.roi - uniformBest;
     console.log(`  Improvement over uniform: ${improvement.toFixed(2)}%`);
     console.log("  Recommendation:", Math.abs(improvement) < 1 ? "Use uniform decay" : "Use per-dimension decay");

@@ -9,19 +9,22 @@
 ## Directory Layout
 
 - **src/** – All TypeScript source code.
-  - **src/shared/** – `types.ts`, `utils.ts`, `config.ts` (used across the app).
-  - **src/core/** – `hmm.ts`, `gbt-engine.ts`, `random-pool.ts`, `prediction-engine.ts` (HMM and GBT models).
-  - **src/workers/** – `worker-pool.ts`, `hmm-worker.ts` (concurrency).
-  - **src/backtest/** – `backtest.ts`, `backtest-gbt.ts`, `backtest-args.ts`, `result-printer.ts`, `hmm-diagnostics.ts`.
-  - **src/cli/** – `evaluate-strategies.ts`, `analyze-data.ts`, `data-check.ts`, `investigate-factors.ts`, `optimizer.ts`, `train-gbt.ts`, `experiment-recency.ts`.
+    - **src/shared/** – `types.ts`, `utils.ts`, `config.ts`, `context-types.ts`, `context-stats.ts`, `monster-tiers.ts`.
+    - **src/core/** – `hmm.ts`, `gbt-engine.ts`, `random-pool.ts`, `prediction-engine.ts`, `context-engine.ts` (HMM, GBT, Context EV).
+    - **src/workers/** – `worker-pool.ts`, `hmm-worker.ts` (concurrency).
+    - **src/backtest/** – `backtest.ts`, `backtest-gbt.ts`, `backtest-context.ts`, `backtest-args.ts`, `result-printer.ts`, `hmm-diagnostics.ts`.
+    - **src/cli/** – `predict-race.ts`, `evaluate-strategies.ts`, `analyze-data.ts`, `data-check.ts`, `investigate-factors.ts`, `optimizer.ts`, `train-gbt.ts`, `experiment-recency.ts`.
 - Data files (`data_historical.txt`, `data_current.txt`, etc.) remain in project root.
-- See `IMPROVEMENTS.md` for the modeling roadmap and planned architectural changes.
+- See `ROADMAP.md` for the modeling roadmap, factor analysis findings, and planned architectural changes.
 
 ## Build, Lint, and Test Commands
 
 ### Build Commands
 
-- `bun run backtest` - Run backtesting functionality
+- `bun run backtest` - Run HMM backtesting functionality
+- `bun run backtest:context` - Run Context EV Predictor walk-forward backtest
+- `bun run predict` - Predict unseen races in `data_current.txt`
+- `./context_backtest.sh` - CEVP backtest (default + conservative)
 
 ### Lint and Format Commands
 

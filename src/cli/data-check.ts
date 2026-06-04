@@ -15,7 +15,7 @@ let text: string;
 try {
     const f = Bun.file(file);
     const f_historical = Bun.file(file_historical);
-    text = (await f_historical.text())+(await f.text());
+    text = (await f_historical.text()) + (await f.text());
 } catch (e) {
     console.error(`Error reading ${file}:`, e);
     process.exit(1);
@@ -28,10 +28,7 @@ if (resolved.length === 0) {
     process.exit(1);
 }
 
-const byDay = new Map<
-    number,
-    { races: Race[]; venueCounts: Record<string, number>; payouts: number[]; slotWins: Record<number, number> }
->();
+const byDay = new Map<number, { races: Race[]; venueCounts: Record<string, number>; payouts: number[]; slotWins: Record<number, number> }>();
 
 for (const r of resolved) {
     const day = r.day;
@@ -64,8 +61,7 @@ for (const day of days) {
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([v, c]) => `${v}:${c}`)
         .join(" ");
-    const avgPayout =
-        row.payouts.length > 0 ? row.payouts.reduce((a, b) => a + b, 0) / row.payouts.length : 0;
+    const avgPayout = row.payouts.length > 0 ? row.payouts.reduce((a, b) => a + b, 0) / row.payouts.length : 0;
     const slotStr = [1, 2, 3, 4, 5, 6].map((s) => row.slotWins[s] ?? 0).join(",");
     console.log(`Day ${day.toString().padStart(3)} | ${venueStr.padEnd(32)} | avg ${avgPayout.toFixed(2).padStart(5)} | [${slotStr}]`);
 }

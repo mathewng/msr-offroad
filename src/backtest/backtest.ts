@@ -17,7 +17,6 @@ import { parseBacktestArgs, BACKTEST_USAGE } from "./backtest-args";
 
 const OBS_PER_CONTEXT = 18; // 6 slots × 3 buckets
 
-
 /** Builds the observation sequence from history (encoding: round/slot/bucket). */
 function buildInitialSequence(history: Race[]): number[] {
     return history.map((r) => {
@@ -131,16 +130,11 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
     // This stabilizes state labels and improves convergence for incremental data.
     const ensembleParams = new Array(config.ensembleSize).fill(undefined);
 
-    console.log(
-        `Loaded history: ${history.length}, Target: ${currentMonthRaces.length}. Using ${config.maxWorkers} cores.`,
-    );
+    console.log(`Loaded history: ${history.length}, Target: ${currentMonthRaces.length}. Using ${config.maxWorkers} cores.`);
     printHeader();
 
     // Walk-forward: use relaxed relative threshold when we started with no history (HMM untrained for race 0).
-    const effectiveConfig =
-        previousMonthsRaces.length === 0 && (config.relativeThreshold ?? 0) > 0
-            ? { ...config, relativeThreshold: 0 }
-            : config;
+    const effectiveConfig = previousMonthsRaces.length === 0 && (config.relativeThreshold ?? 0) > 0 ? { ...config, relativeThreshold: 0 } : config;
 
     for (let i = 0; i < currentMonthRaces.length; i += config.chunkSize) {
         const chunk = currentMonthRaces.slice(i, i + config.chunkSize);
@@ -176,12 +170,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
             const currentRace = chunk[j]!;
             aggregateStepProbs(allEnsemblePredictions, j, config.hmmObservations, invEnsembleSize, aggregatedProbs);
 
-            const { bets, score, diagnostics } = predictRace(
-                currentRace,
-                currentStats,
-                aggregatedProbs,
-                effectiveConfig,
-            );
+            const { bets, score, diagnostics } = predictRace(currentRace, currentStats, aggregatedProbs, effectiveConfig);
             if (config.diagnoseHmm && diagnostics) {
                 diagnosticSamples.push({ ...diagnostics, winningSlot: currentRace.winningSlot ?? null });
             }
@@ -201,23 +190,11 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
             }
 
             const status = computeStatus(bets, isPending, raceWins);
-            printRow(
-                currentRace,
-                bets,
-                currentRace.winningSlot,
-                currentRace.winningPayout,
-                score,
-                raceProfit,
-                stats.totalProfit,
-                status,
-                consensusRegime,
-            );
+            printRow(currentRace, bets, currentRace.winningSlot, currentRace.winningPayout, score, raceProfit, stats.totalProfit, status, consensusRegime);
 
             if (!isPending) {
                 const bucket = getPayoutBucket(currentRace.winningPayout!);
-                sequence.push(
-                    (currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket,
-                );
+                sequence.push((currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket);
                 updateStats(currentStats, currentRace, config);
             } else {
                 sequence.push(-1);

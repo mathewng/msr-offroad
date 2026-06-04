@@ -48,11 +48,7 @@ export function printRow(
 ): void {
     const betDisplay = [1, 2, 3, 4, 5, 6].map((s) => (bets.includes(s) ? s.toString() : " ")).join("");
     const isPending = winningSlot === null;
-    const winStatus = isPending
-        ? "-"
-        : raceProfit > 0 || (bets.includes(winningSlot!) && winningPayout! >= 1)
-          ? "YES"
-          : "NO";
+    const winStatus = isPending ? "-" : raceProfit > 0 || (bets.includes(winningSlot!) && winningPayout! >= 1) ? "YES" : "NO";
 
     const dateCol = (race.date ? race.date : `D${race.day}`).padStart(DATE_COL_WIDTH);
     console.log(

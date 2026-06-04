@@ -21,16 +21,16 @@ const defaultConfig: BacktestConfig = {
 async function main() {
     const args = process.argv.slice(2);
     const files = args.length > 0 ? args : ["data_historical.txt"];
-    
+
     console.log(`Loading training data from: ${files.join(", ")}...`);
-    
+
     let trainingRaces: any[] = [];
     for (const f of files) {
         const races = await loadRaces(f);
-        const seen = races.filter(r => r.winningSlot !== null);
+        const seen = races.filter((r) => r.winningSlot !== null);
         trainingRaces = trainingRaces.concat(seen);
     }
-    
+
     if (trainingRaces.length === 0) {
         console.error("No training data found (races with winning slots).");
         return;
@@ -40,7 +40,7 @@ async function main() {
     const stats = calculateStats(trainingRaces, defaultConfig);
 
     // Calculate monster win rates ONLY using training data
-    const monsterCounts: Record<string, { wins: number, total: number }> = {};
+    const monsterCounts: Record<string, { wins: number; total: number }> = {};
     for (const r of trainingRaces) {
         for (let i = 0; i < 6; i++) {
             const m = r.players?.[i] ?? "Human";
@@ -53,13 +53,13 @@ async function main() {
     for (const [m, c] of Object.entries(monsterCounts)) {
         monsterRates[m] = (c.wins + 0.1) / (c.total + 0.6);
     }
-    
+
     console.log(`Training on ${trainingRaces.length} races...`);
-    const trainingData = trainingRaces.flatMap(r => raceToExamples(r, stats, monsterRates));
+    const trainingData = trainingRaces.flatMap((r) => raceToExamples(r, stats, monsterRates));
     const gbt = trainGBT(trainingRaces, stats, monsterRates);
-    
+
     console.log("Model trained successfully.");
-    
+
     const trainingAccuracy = gbt.evaluate(trainingData);
     console.log(`Training Accuracy: ${(trainingAccuracy * 100).toFixed(2)}%`);
 

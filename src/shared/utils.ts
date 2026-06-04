@@ -82,7 +82,7 @@ export function parseLines(lines: string[]): Race[] {
                 const payPart = parts[4 + i]?.trim();
                 const winPart = parts[16 + i]?.trim();
                 payouts[i] = payPart === "?" ? NaN : parseFloat(payPart || "0");
-                
+
                 if (winPart === "1") {
                     winIndicators[i] = 1;
                     isUnseen = false;
@@ -100,9 +100,9 @@ export function parseLines(lines: string[]): Race[] {
 
             // A race is unseen if NO result is recorded (0 or 1) AND it's NOT marked with ?
             // In practice, this means all win columns were blank.
-            const hasAnyResult = winIndicators.some(v => v === 0 || v === 1);
-            const isMarkedNotRecorded = parts.slice(16, 22).some(p => p?.trim() === "?");
-            
+            const hasAnyResult = winIndicators.some((v) => v === 0 || v === 1);
+            const isMarkedNotRecorded = parts.slice(16, 22).some((p) => p?.trim() === "?");
+
             const winningIndex = winIndicators.findIndex((n) => n === 1);
             const winningSlot = winningIndex !== -1 ? winningIndex + 1 : null;
             const winningPayout = winningIndex !== -1 ? payouts[winningIndex] : null;
@@ -287,7 +287,7 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
                     venueMap[r.venue]![s]!.wins++;
                     venueMap[r.venue]![s]!.totalPayout += r.winningPayout;
                 }
-                
+
                 venueRoundMap[r.venue]![r.raceNumber]![s]!.occurrences++;
                 if (s === winningSlot) {
                     venueRoundMap[r.venue]![r.raceNumber]![s]!.wins++;
@@ -429,7 +429,7 @@ export function updateStats(stats: StatsResult, r: Race, config: BacktestConfig)
 
     const smoothPayout = (totalPayout: number, wins: number) => {
         const priorPayout = 6.0;
-        const alpha = 2.0; 
+        const alpha = 2.0;
         return (totalPayout + alpha * priorPayout) / (wins + alpha);
     };
 

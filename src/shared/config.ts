@@ -113,6 +113,29 @@ export const CONFIG_EFFICIENCY: BacktestConfig = {
 };
 
 /**
+ * Strategy: CONTEXT EV PREDICTOR (CEVP)
+ * Venue×round + monster-in-slot lookups; no HMM.
+ */
+export const CONFIG_CONTEXT: BacktestConfig = {
+    ...BASE_CONFIG,
+    betLimit: 2,
+    scoreWeights: {
+        historical: 1,
+        hmm: 0,
+    },
+    minScoreThreshold: 0,
+    relativeThreshold: 0,
+    priorWeight: 5,
+};
+
+/** Conservative CEVP: single bet, requires positive relative edge. */
+export const CONFIG_CONTEXT_CONSERVATIVE: BacktestConfig = {
+    ...CONFIG_CONTEXT,
+    betLimit: 1,
+    relativeThreshold: 0.05,
+};
+
+/**
  * Default configuration used for generic tasks and optimization.
  */
 export const CONFIG = CONFIG_HIGHEST_YIELD;

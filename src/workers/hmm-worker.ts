@@ -20,8 +20,7 @@ declare var self: Worker;
  */
 self.onmessage = (event: MessageEvent) => {
     // sequence is an Int32Array (likely backed by SharedArrayBuffer)
-    const { id, sequence, numStates, numObservations, iterations, restarts, tolerance, smoothing, perturbAmount, steps, seedParams } =
-        event.data;
+    const { id, sequence, numStates, numObservations, iterations, restarts, tolerance, smoothing, perturbAmount, steps, seedParams } = event.data;
 
     // 1. Initialize a new HMM with random parameters
     const hmm = new HMM(numStates, numObservations);
