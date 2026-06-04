@@ -1,3 +1,10 @@
+import { predictContextRace } from "../core/context-engine";
+import { CONFIG_CONTEXT } from "../shared/config";
+import { contextConfigFromBacktest } from "../shared/context-types";
+import { calculateContextStats, updateContextStats } from "../shared/context-stats";
+import type { Race as SharedRace } from "../shared/types";
+import { calculateEmpiricalWinRates } from "../shared/utils";
+
 type RaceTime = "12:00" | "18:00" | "12pm" | "6pm";
 
 type Bet = {
@@ -11,6 +18,8 @@ type Race = {
     time: RaceTime;
     raceNumber: number;
     payouts: number[];
+    /** Monster names per slot (new-format data); empty string = random human. */
+    players?: string[];
     bets: Bet[];
     winningSlot: 1 | 2 | 3 | 4 | 5 | 6;
     winningPayout: number;
@@ -116,6 +125,20 @@ async function main() {
     }
     {
         console.log(`
+ * Context EV walk-forward (live payout, monster blend, hierarchical context)`);
+        clearBets(races);
+        const contextEVSlots = await generateBetsStrategyL(races);
+
+        const profit = await calculateProfit(races);
+        console.log("profit", profit);
+        console.table(
+            races.map((r) => ({ ...r, payouts: r.payouts.join(","), bets: r.bets.map((b) => b.slot).join(","), won: r.bets.map((b) => b.slot).includes(<number>r.winningSlot) ? "YES" : "NO" })),
+        );
+
+        console.table(contextEVSlots);
+    }
+    {
+        console.log(`
             * Bet as much as I can`);
         clearBets(races);
         await generateBetsStrategyK(races);
@@ -214,6 +237,10 @@ async function parseLines(lines: string[]): Promise<Race[]> {
             if (fileRound) raceNumber = parseInt(fileRound, 10) || raceNumber;
 
             const payouts = parts.slice(4, 10).map((p) => (p?.trim() === "?" ? NaN : Number(p ?? 0)));
+            const players = parts.slice(10, 16).map((p) => {
+                const t = p?.trim();
+                return t && t !== "?" ? t : "";
+            });
             const winCols = parts.slice(16, 22);
             const winningIndex = winCols.findIndex((w) => w?.trim() === "1");
 
@@ -228,6 +255,7 @@ async function parseLines(lines: string[]): Promise<Race[]> {
                         time,
                         raceNumber,
                         payouts,
+                        players,
                         bets: [],
                         winningSlot: (winningIndex + 1) as 1 | 2 | 3 | 4 | 5 | 6,
                         winningPayout,
@@ -689,6 +717,67 @@ async function generateBetsStrategyJ(races: Race[]): Promise<{ venue: string; ra
     }
 
     return result;
+}
+
+const CONTEXT_BET_COST = 200;
+
+function toSharedRace(r: Race): SharedRace {
+    return {
+        day: r.day,
+        venue: r.venue,
+        time: r.time,
+        raceNumber: r.raceNumber,
+        payouts: r.payouts,
+        players: r.players?.map((p) => (p.length > 0 ? p : null)),
+        bets: r.bets.map((b) => ({ slot: b.slot, cost: b.cost })),
+        winningSlot: r.winningSlot,
+        winningPayout: r.winningPayout,
+    };
+}
+
+async function loadHistoricalRaces(): Promise<Race[]> {
+    const data_historical = await Bun.file("data_historical.txt").text();
+    return parseLines(data_historical.split("\n"));
+}
+
+/**
+ * Context EV walk-forward (Strategy L). Fixes venue×round historical-EV flaws:
+ * - EV uses this race's posted payout (not avg payout when won)
+ * - Hierarchical context: venue×round → venue → round → slot (min samples, sparse-venue skip)
+ * - Monster-in-slot blend and tier caps/exclusions
+ * - Walk-forward only (no merging eval races into training stats upfront)
+ */
+async function generateBetsStrategyL(races: Race[]): Promise<{ venue: string; raceNumber: string; "top context EV slots": string }[]> {
+    const historicalRaces = await loadHistoricalRaces();
+    const sharedHist = historicalRaces.map(toSharedRace);
+    const config = contextConfigFromBacktest(CONFIG_CONTEXT);
+    config.empiricalWinRates = calculateEmpiricalWinRates(sharedHist);
+    const stats = calculateContextStats(sharedHist, config);
+
+    const topSlotsByVenueRound: Record<string, string> = {};
+
+    for (const r of races) {
+        const shared = toSharedRace(r);
+        const { bets, candidates } = predictContextRace(shared, stats, config);
+        for (const slot of bets) {
+            r.bets.push({ slot, cost: CONTEXT_BET_COST });
+        }
+        const key = `${r.venue ?? "?"}|${r.raceNumber}`;
+        topSlotsByVenueRound[key] = candidates
+            .slice(0, 6)
+            .map((c) => c.slot)
+            .join(", ");
+        updateContextStats(stats, shared, config);
+    }
+
+    return Object.entries(topSlotsByVenueRound).map(([key, slots]) => {
+        const [venue, raceNumber] = key.split("|");
+        return {
+            venue: venue!,
+            raceNumber: raceNumber!,
+            "top context EV slots": slots,
+        };
+    });
 }
 
 /**

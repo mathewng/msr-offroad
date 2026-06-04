@@ -2,12 +2,12 @@
 
 Analysis-driven modeling roadmap for MSR offroad race prediction.
 
-| Item | Value |
-| ---- | ----- |
-| Data | 753 races in `data_all.txt` (729 historical + 24 current) |
-| Analysis | 2026-06-04 (`analyze_*.py`, `investigate-factors.ts`) |
+| Item           | Value                                                          |
+| -------------- | -------------------------------------------------------------- |
+| Data           | 753 races in `data_all.txt` (729 historical + 24 current)      |
+| Analysis       | 2026-06-04 (`analyze_*.py`, `investigate-factors.ts`)          |
 | Primary engine | **CEVP** — Context EV Predictor (`src/core/context-engine.ts`) |
-| Validation | 2026-06-04 — see [Engine validation](#engine-validation) |
+| Validation     | 2026-06-04 — see [Engine validation](#engine-validation)       |
 
 ---
 
@@ -19,18 +19,18 @@ Walk-forward backtests are the arbiter for ROI. Holdout (`data_historical` → t
 
 History: 729 resolved races. Target: 24 races (21 resolved, 3 pending).
 
-| Engine | ROI | Profit | Accuracy | Bets |
-| ------ | --- | ------ | -------- | ---- |
-| **CEVP** (default, 2 bets) | **155.26%** | 59.00 | 61.90% | 38 |
-| CEVP (`--conservative`) | 104.76% | 22.00 | 23.81% | 21 |
-| GBT | 128.57% | 54.00 | 52.38% | 42 |
-| HMM yield | 81.82% | 36.00 | 47.62% | 44 |
+| Engine                     | ROI         | Profit | Accuracy | Bets |
+| -------------------------- | ----------- | ------ | -------- | ---- |
+| **CEVP** (default, 2 bets) | **155.26%** | 59.00  | 61.90%   | 38   |
+| CEVP (`--conservative`)    | 104.76%     | 22.00  | 23.81%   | 21   |
+| GBT                        | 128.57%     | 54.00  | 52.38%   | 42   |
+| HMM yield                  | 81.82%      | 36.00  | 47.62%   | 44   |
 
 ### Walk-forward: `data_all.txt` (90% train / 10% test)
 
-| Config | ROI | Profit | Accuracy | Bets |
-| ------ | --- | ------ | -------- | ---- |
-| CEVP default | **40.98%** | 50.00 | 37.14% | 122 |
+| Config       | ROI        | Profit | Accuracy | Bets |
+| ------------ | ---------- | ------ | -------- | ---- |
+| CEVP default | **40.98%** | 50.00  | 37.14%   | 122  |
 
 ```bash
 bun run backtest:context                    # holdout, default
@@ -49,14 +49,14 @@ Per slot: hierarchical **venue×round×slot** win rate → blend with **monster�
 
 ## Completed
 
-| Item | Implementation |
-| ---- | -------------- |
-| Venue×round×slot context | `resolveContextRate()` in `context-engine.ts`; `venueRoundMap` in `utils.ts` |
-| Monster×slot / monster×venue×slot | `resolveMonsterRate()`; maps in `context-stats.ts` |
-| Monster tiers (avoid / near-zero / premium) | `monster-tiers.ts` — thresholds from global stats, not hardcoded names |
-| Walk-forward context backtest | `backtest-context.ts` |
-| Live prediction CLI | `predict-race.ts` |
-| GBT venue×round features | `features.ts` (`venueRoundWinRate`, etc.) — used by GBT, not CEVP |
+| Item                                        | Implementation                                                               |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
+| Venue×round×slot context                    | `resolveContextRate()` in `context-engine.ts`; `venueRoundMap` in `utils.ts` |
+| Monster×slot / monster×venue×slot           | `resolveMonsterRate()`; maps in `context-stats.ts`                           |
+| Monster tiers (avoid / near-zero / premium) | `monster-tiers.ts` — thresholds from global stats, not hardcoded names       |
+| Walk-forward context backtest               | `backtest-context.ts`                                                        |
+| Live prediction CLI                         | `predict-race.ts`                                                            |
+| GBT venue×round features                    | `features.ts` (`venueRoundWinRate`, etc.) — used by GBT, not CEVP            |
 
 ---
 
@@ -95,11 +95,11 @@ Ranked by expected impact on **walk-forward ROI** (not holdout headline).
 
 ### Deprioritized / do not pursue without new evidence
 
-| Idea | Why |
-| ---- | --- |
-| Per-venue HMM | Sequential tests: no significant per-venue Markov structure |
-| Payout rank / favorite flags | IV ≈ 0; noise |
-| Chasing holdout ROI alone | ~21 resolved target races; walk-forward ~41% is the honest benchmark |
+| Idea                         | Why                                                                  |
+| ---------------------------- | -------------------------------------------------------------------- |
+| Per-venue HMM                | Sequential tests: no significant per-venue Markov structure          |
+| Payout rank / favorite flags | IV ≈ 0; noise                                                        |
+| Chasing holdout ROI alone    | ~21 resolved target races; walk-forward ~41% is the honest benchmark |
 
 ---
 
@@ -109,50 +109,50 @@ Ranked by expected impact on **walk-forward ROI** (not holdout headline).
 
 ### Factor power (average IV)
 
-| Factor | Avg IV | Signal | Notes |
-| ------ | ------ | ------ | ----- |
-| Venue × Round | 0.256 | MEDIUM | **In CEVP** |
-| Monster in Slot | 0.237 | MEDIUM | **In CEVP** |
-| Venue × Time | 0.152 | MEDIUM | Not in CEVP |
-| Venue × Payout Rank | 0.129 | MEDIUM | GBT only; weak globally |
-| Venue alone | 0.071 | weak | Fallback tier in CEVP |
-| Payout value / spread / rank / time / favorite | < 0.05 | weak | Keep raw `payout` for EV only |
+| Factor                                         | Avg IV | Signal | Notes                         |
+| ---------------------------------------------- | ------ | ------ | ----------------------------- |
+| Venue × Round                                  | 0.256  | MEDIUM | **In CEVP**                   |
+| Monster in Slot                                | 0.237  | MEDIUM | **In CEVP**                   |
+| Venue × Time                                   | 0.152  | MEDIUM | Not in CEVP                   |
+| Venue × Payout Rank                            | 0.129  | MEDIUM | GBT only; weak globally       |
+| Venue alone                                    | 0.071  | weak   | Fallback tier in CEVP         |
+| Payout value / spread / rank / time / favorite | < 0.05 | weak   | Keep raw `payout` for EV only |
 
 **Takeaway**: Context (where + round + slot) and monster-in-slot dominate. Payout-derived ranks are noise except raw payout in the EV term.
 
 ### Cross-venue slot win rates (%)
 
-| Venue | S1 | S2 | S3 | S4 | S5 | S6 |
-| ----- | -- | -- | -- | -- | -- | -- |
-| Aqua Road | 25.4 | 26.2 | 15.1 | 19.8 | 10.3 | 3.2 |
-| Cactus Desert | 25.0 | 21.7 | 11.7 | 15.0 | 23.3 | 3.3 |
+| Venue          | S1   | S2   | S3   | S4   | S5   | S6  |
+| -------------- | ---- | ---- | ---- | ---- | ---- | --- |
+| Aqua Road      | 25.4 | 26.2 | 15.1 | 19.8 | 10.3 | 3.2 |
+| Cactus Desert  | 25.0 | 21.7 | 11.7 | 15.0 | 23.3 | 3.3 |
 | Deep Sea World | 25.8 | 24.7 | 12.4 | 14.0 | 15.6 | 7.5 |
-| Leafre | 33.3 | 18.9 | 15.6 | 12.2 | 14.4 | 5.6 |
-| Ludibrium | 24.0 | 32.8 | 10.9 | 8.7 | 16.9 | 6.6 |
-| Minar Forest | 26.2 | 22.6 | 11.9 | 15.5 | 19.0 | 4.8 |
-| Lith Harbour | 16.7 | 0.0 | 0.0 | 50.0 | 33.3 | 0.0 |
+| Leafre         | 33.3 | 18.9 | 15.6 | 12.2 | 14.4 | 5.6 |
+| Ludibrium      | 24.0 | 32.8 | 10.9 | 8.7  | 16.9 | 6.6 |
+| Minar Forest   | 26.2 | 22.6 | 11.9 | 15.5 | 19.0 | 4.8 |
+| Lith Harbour   | 16.7 | 0.0  | 0.0  | 50.0 | 33.3 | 0.0 |
 
 S1+S2 ≈ 50% combined at most venues. S6 best case Deep Sea World 7.5%.
 
 ### Venue × round sweet spots (lift vs baseline)
 
-| Slot | Best (venue, round) | Rate | Lift | Worst | Rate |
-| ---- | ------------------- | ---- | ---- | ----- | ---- |
-| S1 | Leafre R2 | 35.5% | 1.39× | Cactus R2 | 14.3% |
-| S2 | Ludibrium R3 | 42.6% | 1.71× | Leafre R2 | 9.7% |
-| S3 | Aqua Road R2 | 25.6% | 2.07× | Cactus R1 | 4.8% |
-| S4 | Deep Sea R2 | 23.1% | 1.69× | Deep Sea R3 | 3.1% |
-| S5 | Cactus R1/R2 | 28.6% | 1.82× | Leafre R1 | 6.5% |
-| S6 | Ludibrium R1 | 13.1% | 2.41× | Cactus R3 | 0.0% |
+| Slot | Best (venue, round) | Rate  | Lift  | Worst       | Rate  |
+| ---- | ------------------- | ----- | ----- | ----------- | ----- |
+| S1   | Leafre R2           | 35.5% | 1.39× | Cactus R2   | 14.3% |
+| S2   | Ludibrium R3        | 42.6% | 1.71× | Leafre R2   | 9.7%  |
+| S3   | Aqua Road R2        | 25.6% | 2.07× | Cactus R1   | 4.8%  |
+| S4   | Deep Sea R2         | 23.1% | 1.69× | Deep Sea R3 | 3.1%  |
+| S5   | Cactus R1/R2        | 28.6% | 1.82× | Leafre R1   | 6.5%  |
+| S6   | Ludibrium R1        | 13.1% | 2.41× | Cactus R3   | 0.0%  |
 
 ### Monster context (IV)
 
-| Interaction | IV | In CEVP |
-| ----------- | -- | ------- |
-| Monster alone | 0.124 | weak — global tier only |
-| Monster × Slot | 0.448 | yes |
-| Monster × Venue × Slot | 0.524 | yes |
-| Venue × Round × Slot (no monster) | 0.531 | yes |
+| Interaction                       | IV    | In CEVP                 |
+| --------------------------------- | ----- | ----------------------- |
+| Monster alone                     | 0.124 | weak — global tier only |
+| Monster × Slot                    | 0.448 | yes                     |
+| Monster × Venue × Slot            | 0.524 | yes                     |
+| Venue × Round × Slot (no monster) | 0.531 | yes                     |
 
 **Tier rules** (`monster-tiers.ts`): avoid = 0 wins and ≥10 appearances (exclude unless ≥3 wins in that slot); near-zero = raw rate <10% (cap blended rate at 12%); premium = >25% (informational).
 
@@ -162,13 +162,13 @@ S1+S2 ≈ 50% combined at most venues. S6 best case Deep Sea World 7.5%.
 
 ### Raw odds ROI (`analyze-data.ts`, floor odds, n≥100)
 
-| Odds | Win% | Naive ROI |
-| ---- | ---- | --------- |
-| 2 | 24.8% | −50.4% |
-| 3 | 28.3% | −15.0% |
-| 4 | 25.5% | +1.8% |
-| 8 | 13.9% | +11.0% |
-| 9 | 14.7% | +32.1% |
+| Odds | Win%  | Naive ROI |
+| ---- | ----- | --------- |
+| 2    | 24.8% | −50.4%    |
+| 3    | 28.3% | −15.0%    |
+| 4    | 25.5% | +1.8%     |
+| 8    | 13.9% | +11.0%    |
+| 9    | 14.7% | +32.1%    |
 
 Informs P0 odds-floor experiments; CEVP must beat “bet everything at 9×.”
 
@@ -176,12 +176,12 @@ Informs P0 odds-floor experiments; CEVP must beat “bet everything at 9×.”
 
 ## Sequential dependency (reference)
 
-| Test | Result |
-| ---- | ------ |
-| Global χ² | p=0.88 — not significant |
-| Permutation (info gain) | p=0.36 — not significant |
-| Per-venue permutation | None significant at α=0.05 |
-| Pseudo-R² (entropy) | 3.0% globally |
+| Test                    | Result                     |
+| ----------------------- | -------------------------- |
+| Global χ²               | p=0.88 — not significant   |
+| Permutation (info gain) | p=0.36 — not significant   |
+| Per-venue permutation   | None significant at α=0.05 |
+| Pseudo-R² (entropy)     | 3.0% globally              |
 
 Entropy-based venue R² (e.g. Minar 14.3%) is **descriptive only** — validate any HMM or sequence feature in walk-forward before shipping.
 
@@ -215,29 +215,29 @@ bun src/backtest/backtest-context.ts --file data_all.txt
 
 ## Analysis scripts
 
-| Script | Purpose |
-| ------ | ------- |
-| `analyze_all_slots.py` | Factor IV ranking, slots 1–6 |
-| `analyze_slot5.py` | Slot 5 deep dive |
-| `analyze_monsters.py` | Monster × slot × venue |
-| `analyze_sequences.py` | Markov, streaks, within-session |
-| `analyze_sequential_signal.py` | χ², permutation, binomial |
-| `src/cli/analyze-data.ts` | EV by odds floor; venue bias |
-| `src/cli/analyze-rounds.ts` | Round win rates, CIs |
-| `src/cli/analyze-venues.ts` | Venue session / slot EV |
-| `src/cli/investigate-factors.ts` | Chi-square vs engine usage |
-| `src/backtest/backtest-context.ts` | CEVP walk-forward |
-| `src/cli/predict-race.ts` | Forward predictions |
+| Script                             | Purpose                         |
+| ---------------------------------- | ------------------------------- |
+| `analyze_all_slots.py`             | Factor IV ranking, slots 1–6    |
+| `analyze_slot5.py`                 | Slot 5 deep dive                |
+| `analyze_monsters.py`              | Monster × slot × venue          |
+| `analyze_sequences.py`             | Markov, streaks, within-session |
+| `analyze_sequential_signal.py`     | χ², permutation, binomial       |
+| `src/cli/analyze-data.ts`          | EV by odds floor; venue bias    |
+| `src/cli/analyze-rounds.ts`        | Round win rates, CIs            |
+| `src/cli/analyze-venues.ts`        | Venue session / slot EV         |
+| `src/cli/investigate-factors.ts`   | Chi-square vs engine usage      |
+| `src/backtest/backtest-context.ts` | CEVP walk-forward               |
+| `src/cli/predict-race.ts`          | Forward predictions             |
 
 ---
 
 ## Code map
 
-| Path | Role |
-| ---- | ---- |
-| `src/core/context-engine.ts` | CEVP prediction |
-| `src/shared/context-stats.ts` | Walk-forward stat build/update |
-| `src/shared/monster-tiers.ts` | Tier classification & caps |
-| `src/shared/config.ts` | `CONFIG_CONTEXT`, `CONFIG_CONTEXT_CONSERVATIVE` |
-| `src/core/prediction-engine.ts` | HMM + historical EV (legacy compare) |
-| `src/core/gbt-engine.ts` | GBT ensemble |
+| Path                            | Role                                            |
+| ------------------------------- | ----------------------------------------------- |
+| `src/core/context-engine.ts`    | CEVP prediction                                 |
+| `src/shared/context-stats.ts`   | Walk-forward stat build/update                  |
+| `src/shared/monster-tiers.ts`   | Tier classification & caps                      |
+| `src/shared/config.ts`          | `CONFIG_CONTEXT`, `CONFIG_CONTEXT_CONSERVATIVE` |
+| `src/core/prediction-engine.ts` | HMM + historical EV (legacy compare)            |
+| `src/core/gbt-engine.ts`        | GBT ensemble                                    |
