@@ -157,11 +157,7 @@ async function main() {
             .filter((x) => x.wins > 1)
             .filter((x) => x.profit.indexOf("-") === -1)
             .sort((a, b) => a.slot - b.slot || a.payout - b.payout);
-        console.log("stats by slot and payout");
-        console.table(statsBySlotAndPayout);
-        console.log();
-        console.log("recommendations");
-        console.table(recommendations);
+
         {
             console.log(`
  * Bet profitable from recommendations`);
@@ -170,6 +166,12 @@ async function main() {
             const profit = await calculateProfit(races);
             console.log("profit", profit);
         }
+
+        console.log("stats by slot and payout");
+        console.table(statsBySlotAndPayout);
+        console.log();
+        console.log("recommendations");
+        console.table(recommendations);
     }
     console.log();
     {
@@ -178,11 +180,7 @@ async function main() {
             .filter((x) => x.wins > 1)
             .filter((x) => x.profit.indexOf("-") === -1)
             .sort((a, b) => a.slot - b.slot);
-        console.log("stats by slot");
-        console.table(statsBySlot);
-        console.log();
-        console.log("recommendations");
-        console.table(recommendations);
+
         {
             console.log(`
  * Bet profitable from recommendations`);
@@ -191,6 +189,12 @@ async function main() {
             const profit = await calculateProfit(races);
             console.log("profit", profit);
         }
+
+        console.log("stats by slot");
+        console.table(statsBySlot);
+        console.log();
+        console.log("recommendations");
+        console.table(recommendations);
     }
 
     console.groupEnd();
@@ -438,13 +442,13 @@ async function generateBetsStrategyD(races: Race[]) {
             let newWinningSlots = [...new Set(winningSlots)];
             if (newWinningSlots.length < winningSlots.length) {
                 for (const slot of newWinningSlots) {
-                    r.bets.push({ slot, cost: 200 });
+                    r.bets.push({ slot, cost: 100 });
                 }
             } else {
                 newWinningSlots.sort((a, b) => a - b);
                 newWinningSlots.splice(0, 1);
                 for (const slot of newWinningSlots) {
-                    r.bets.push({ slot, cost: 200 });
+                    r.bets.push({ slot, cost: 100 });
                 }
             }
         }

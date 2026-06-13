@@ -8,9 +8,9 @@
  * - Q3: Whether per-dimension decay rates are beneficial
  */
 
-import { calculateEmpiricalWinRates, loadRaces, getPayoutBucket } from "../shared/utils";
+import { calculateEmpiricalWinRates, loadRaces } from "../shared/utils";
 import { predictRace } from "../core/prediction-engine";
-import type { Race, StatsResult, BacktestConfig, Bet, SlotStat, BucketStat } from "../shared/types";
+import type { Race, StatsResult, BacktestConfig, Bet, SlotStat } from "../shared/types";
 import { CONFIG_HIGHEST_YIELD, CONFIG_EFFICIENCY, CONFIG_BET2 } from "../shared/config";
 import { WorkerPool } from "../workers/worker-pool";
 import { formatCurrency } from "../shared/utils";
@@ -28,7 +28,6 @@ function calculateWeightedStats(races: Race[], decay: number, slotDecay?: number
     const venueDecayFactor = venueDecay ?? decay;
     const roundDecayFactor = roundDecay ?? decay;
 
-    const bucketMap: { [key: number]: { [key: number]: { occurrences: number; wins: number; winRate: number } } } = {};
     const slotMap: { [key: number]: { occurrences: number; wins: number; winRate: number } } = {};
     const venueMap: { [key: string]: { [key: number]: { occurrences: number; wins: number; winRate: number } } } = {};
     const roundMap: { [key: number]: { [key: number]: { occurrences: number; wins: number; winRate: number } } } = {};
@@ -43,8 +42,6 @@ function calculateWeightedStats(races: Race[], decay: number, slotDecay?: number
         if (race.winningSlot === null || race.winningPayout === null) continue;
 
         const slot = race.winningSlot;
-        const payout = race.winningPayout;
-        const bucket = getPayoutBucket(payout);
         const weight = normalizedWeights[r];
 
         // Initialize slot stats
@@ -53,17 +50,6 @@ function calculateWeightedStats(races: Race[], decay: number, slotDecay?: number
         }
         slotMap[slot]!.occurrences += weight;
         slotMap[slot]!.wins += weight;
-
-        // Initialize bucket stats
-        if (!bucketMap[slot]) {
-            bucketMap[slot] = {};
-        }
-        if (!bucketMap[slot][bucket]) {
-            bucketMap[slot][bucket] = { occurrences: 0, wins: 0, winRate: 1 / 6 };
-        }
-        const bucketStat = bucketMap[slot][bucket] ?? { occurrences: 0, wins: 0, winRate: 1 / 6 };
-        bucketStat.occurrences += weight;
-        bucketStat.wins += weight;
 
         // Initialize venue stats
         if (race.venue) {
@@ -103,27 +89,7 @@ function calculateWeightedStats(races: Race[], decay: number, slotDecay?: number
         return result;
     };
 
-    const finalizeBucketStats = (buckets: { [key: number]: { [key: number]: { occurrences: number; wins: number; winRate: number } | undefined } }): Record<number, BucketStat> => {
-        const result: Record<number, BucketStat> = {};
-        for (const slotStr of Object.keys(buckets)) {
-            const slot = parseInt(slotStr);
-            const b = buckets[slot];
-            result[slot] = {};
-            for (const bucketStr of Object.keys(b)) {
-                const bucket = parseInt(bucketStr);
-                const bucketStat = b[bucket] ?? { occurrences: 0, wins: 0, winRate: 1 / 6 };
-                result[slot]![bucket] = {
-                    occurrences: bucketStat.occurrences,
-                    wins: bucketStat.wins,
-                    winRate: bucketStat.occurrences > 0 ? bucketStat.wins / bucketStat.occurrences : 1 / 6,
-                };
-            }
-        }
-        return result;
-    };
-
     return {
-        bucketMap: Object.fromEntries(Object.entries(bucketMap).map(([slot, buckets]) => [parseInt(slot), finalizeBucketStats(buckets)])),
         slotMap: finalizeStats(slotMap),
         venueMap: Object.fromEntries(Object.entries(venueMap).map(([venue, slots]) => [venue, finalizeStats(slots)])),
         roundMap: Object.fromEntries(Object.entries(roundMap).map(([round, slots]) => [parseInt(round), finalizeStats(slots)])),
@@ -156,6 +122,7 @@ async function runBacktestWithRecency(
     const testConfig = {
         ...config,
         priorWeight: 0, // Disable prior to use pure weighted stats
+        hmmObservations: 6, // 6 slots, no buckets
     };
 
     // Initialize worker pool
@@ -169,11 +136,10 @@ async function runBacktestWithRecency(
     const history: Race[] = [...previousMonthsRaces];
     const sequence = history.map((r) => {
         if (r.winningSlot === null || r.winningPayout === null) return -1;
-        const bucket = getPayoutBucket(r.winningPayout);
-        return (r.winningSlot - 1) * 3 + bucket;
+        return r.winningSlot - 1;
     });
 
-    const aggregatedProbs = new Float64Array(config.hmmObservations);
+    const aggregatedProbs = new Float64Array(testConfig.hmmObservations);
     const invEnsembleSize = 1.0 / config.ensembleSize;
     const ensembleParams = new Array(config.ensembleSize).fill(undefined);
 
@@ -186,7 +152,7 @@ async function runBacktestWithRecency(
             pool.run({
                 sequence: currentSequenceView,
                 numStates: config.hmmStates,
-                numObservations: config.hmmObservations,
+                numObservations: testConfig.hmmObservations,
                 iterations: config.trainingIterations,
                 restarts: config.trainingRestarts,
                 tolerance: config.convergenceTolerance,
@@ -208,13 +174,13 @@ async function runBacktestWithRecency(
             const currentRace = chunk[j]!;
 
             // Aggregate HMM probabilities
-            for (let k = 0; k < config.hmmObservations; k++) {
+            for (let k = 0; k < testConfig.hmmObservations; k++) {
                 aggregatedProbs[k] = 0;
             }
             for (const pred of allEnsemblePredictions) {
                 const stepProbs = pred.results[j];
                 if (stepProbs) {
-                    for (let k = 0; k < config.hmmObservations; k++) {
+                    for (let k = 0; k < testConfig.hmmObservations; k++) {
                         aggregatedProbs[k] += (stepProbs[k] ?? 0) * invEnsembleSize;
                     }
                 }
@@ -242,8 +208,7 @@ async function runBacktestWithRecency(
 
             // Update history
             if (currentRace.winningSlot !== null) {
-                const bucket = getPayoutBucket(currentRace.winningPayout!);
-                sequence.push((currentRace.winningSlot! - 1) * 3 + bucket);
+                sequence.push(currentRace.winningSlot! - 1);
                 history.push(currentRace);
             }
         }

@@ -1,4 +1,4 @@
-import type { BucketStat, Race, RaceTime, SlotStat, StatsResult, BacktestConfig } from "./types";
+import type { Race, RaceTime, SlotStat, StatsResult, BacktestConfig } from "./types";
 
 export const EQUAL_SLOT_PROBABILITY = 1 / 6;
 
@@ -202,37 +202,16 @@ export async function loadRaces(filePath: string | undefined): Promise<Race[]> {
 }
 
 /**
- * Categorizes a payout into a "bucket" relative to that specific slot's typical range.
- *
- * This ensures that Bucket 0 always represents a "strong" (low payout) version of that lane,
- * and Bucket 2 represents a "weak" (high payout) version, regardless of overlapping global ranges.
- */
-export function getPayoutBucket(payout: number): number {
-    // These thresholds (5,8) are derived from empirical analysis of the historical
-    // dataset to categorize payouts into roughly equal-frequency buckets:
-    // Bucket 0 (<= 5): Favored / Strong lane
-    // Bucket 1 (5 - 8): Neutral / Mid-range
-    // Bucket 2 (> 8): Longshot / Weak lane
-    const [low, high] = [5, 8];
-
-    if (payout <= low) return 0;
-    if (payout <= high) return 1;
-    return 2;
-}
-
-/**
  * Calculates historical win rates for each slot across multiple dimensions.
  *
  * Dimensions:
  * 1. Global (Slot-wide)
- * 2. Payout Bucket (Slot + Odds range)
- * 3. Venue (Slot + Location)
- * 4. Round (Slot + Race sequence number)
+ * 2. Venue (Slot + Location)
+ * 3. Round (Slot + Race sequence number)
  *
  * Uses Laplace Smoothing to prevent 0% or 100% probabilities in cases with low sample sizes.
  */
 export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsResult {
-    const bucketMap: Record<number, Record<number, BucketStat>> = {};
     const slotMap: Record<number, SlotStat> = {};
     const venueMap: Record<string, Record<number, SlotStat>> = {};
     const roundMap: Record<number, Record<number, SlotStat>> = {};
@@ -240,11 +219,6 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
 
     // Initialize maps for all 6 slots
     for (let s = 1; s <= 6; s++) {
-        bucketMap[s] = {
-            0: { occurrences: 0, wins: 0, winRate: 0 },
-            1: { occurrences: 0, wins: 0, winRate: 0 },
-            2: { occurrences: 0, wins: 0, winRate: 0 },
-        };
         slotMap[s] = { occurrences: 0, wins: 0, winRate: 0, totalPayout: 0, avgPayout: 0 };
     }
 
@@ -275,11 +249,6 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
                 slotMap[s]!.wins++;
                 slotMap[s]!.totalPayout += r.winningPayout;
             }
-
-            const payout = r.payouts[s - 1] ?? 0;
-            const bucket = getPayoutBucket(payout);
-            bucketMap[s]![bucket]!.occurrences++;
-            if (s === winningSlot) bucketMap[s]![bucket]!.wins++;
 
             if (r.venue) {
                 venueMap[r.venue]![s]!.occurrences++;
@@ -328,10 +297,6 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
     for (let s = 1; s <= 6; s++) {
         slotMap[s]!.winRate = smooth(slotMap[s]!.wins, slotMap[s]!.occurrences, s);
         slotMap[s]!.avgPayout = smoothPayout(slotMap[s]!.totalPayout, slotMap[s]!.wins);
-        for (let b = 0; b < 3; b++) {
-            const bStats = bucketMap[s]![b]!;
-            bStats.winRate = smooth(bStats.wins, bStats.occurrences, s);
-        }
     }
     for (const v in venueMap) {
         for (let s = 1; s <= 6; s++) {
@@ -357,28 +322,21 @@ export function calculateStats(allRaces: Race[], config: BacktestConfig): StatsR
         }
     }
 
-    return { bucketMap, slotMap, venueMap, roundMap, venueRoundMap };
+    return { slotMap, venueMap, roundMap, venueRoundMap };
 }
 
 /**
  * Initializes empty statistics for a new session.
  */
 export function initializeStats(config: BacktestConfig): StatsResult {
-    const bucketMap: Record<number, Record<number, BucketStat>> = {};
     const slotMap: Record<number, SlotStat> = {};
 
     for (let s = 1; s <= 6; s++) {
         const prior = config.empiricalWinRates?.[s] ?? EQUAL_SLOT_PROBABILITY;
-        bucketMap[s] = {
-            0: { occurrences: 0, wins: 0, winRate: prior },
-            1: { occurrences: 0, wins: 0, winRate: prior },
-            2: { occurrences: 0, wins: 0, winRate: prior },
-        };
         slotMap[s] = { occurrences: 0, wins: 0, winRate: prior, totalPayout: 0, avgPayout: 6.0 };
     }
 
     return {
-        bucketMap,
         slotMap,
         venueMap: {},
         roundMap: {},
@@ -443,14 +401,6 @@ export function updateStats(stats: StatsResult, r: Race, config: BacktestConfig)
         }
         sStat.winRate = smooth(sStat.wins, sStat.occurrences, s);
         sStat.avgPayout = smoothPayout(sStat.totalPayout, sStat.wins);
-
-        // Update Bucket Stats
-        const payout = r.payouts[s - 1] ?? 0;
-        const bucket = getPayoutBucket(payout);
-        const bStat = stats.bucketMap[s]![bucket]!;
-        bStat.occurrences++;
-        if (s === winningSlot) bStat.wins++;
-        bStat.winRate = smooth(bStat.wins, bStat.occurrences, s);
 
         // Update Venue Stats
         if (r.venue) {

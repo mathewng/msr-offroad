@@ -7,7 +7,7 @@ import { EQUAL_SLOT_PROBABILITY } from "./utils";
  */
 const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreThreshold" | "relativeThreshold"> = {
     // Number of HMM models to train in the ensemble. Higher = more stable predictions.
-    ensembleSize: 100,
+    ensembleSize: 25,
 
     // Maximum iterations for the Baum-Welch training algorithm.
     trainingIterations: 10_000,
@@ -22,11 +22,11 @@ const BASE_CONFIG: Omit<BacktestConfig, "betLimit" | "scoreWeights" | "minScoreT
     maxWorkers: 4,
 
     // Number of hidden states in the HMM.
-    hmmStates: 8,
+    hmmStates: 12,
 
-    // Observation space: round (1–3) × 6 slots × 3 buckets = 54.
-    // Encoding: (round - 1) * 18 + (slot - 1) * 3 + bucket. Gives HMM round-specific structure.
-    hmmObservations: 54,
+    // Observation space: round (1–3) × 6 slots = 18.
+    // Encoding: (round - 1) * 6 + (slot - 1). Gives HMM round-specific structure.
+    hmmObservations: 18,
 
     // Number of races to process in a single walk-forward training window.
     chunkSize: 9,

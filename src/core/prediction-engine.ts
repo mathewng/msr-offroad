@@ -1,5 +1,5 @@
 import type { Race, StatsResult, BacktestConfig, HmmDiagnostics } from "../shared/types";
-import { getPayoutBucket, EQUAL_SLOT_PROBABILITY } from "../shared/utils";
+import { EQUAL_SLOT_PROBABILITY } from "../shared/utils";
 
 /**
  * The core decision engine.
@@ -9,12 +9,11 @@ import { getPayoutBucket, EQUAL_SLOT_PROBABILITY } from "../shared/utils";
  *
  * The algorithm:
  * 1. For each of the 6 slots:
- *    a. Map the current race's payout to a bucket (Favored, Neutral, Longshot).
- *    b. Retrieve historical win rates for that slot + bucket.
- *    c. Blend in Round-specific performance if available.
- *    d. Calculate Historical Expected Value (EV).
- *    e. Estimate HMM-based EV using the transition probabilities for the next state.
- *    f. Combine both EV scores using configurable weights.
+ *    a. Retrieve historical win rates for that slot.
+ *    b. Blend in Round-specific performance if available.
+ *    c. Calculate Historical Expected Value (EV).
+ *    d. Estimate HMM-based EV using the transition probabilities for the next state.
+ *    e. Combine both EV scores using configurable weights.
  * 2. Select slots that exceed the minimum score and relative edge thresholds.
  *
  * @param currentRace - The metadata and payouts for the upcoming race.
@@ -23,16 +22,14 @@ import { getPayoutBucket, EQUAL_SLOT_PROBABILITY } from "../shared/utils";
  * @param config - Betting and scoring configuration parameters.
  */
 export function predictRace(currentRace: Race, stats: StatsResult, aggregatedProbs: Float64Array, config: BacktestConfig): { bets: number[]; score: number; diagnostics?: HmmDiagnostics } {
-    // Expanded alphabet: 54 = 3 rounds × 18 (6 slots × 3 buckets). Use only the slice for this race's round.
-    const OBS_PER_CONTEXT = 18;
+    // Alphabet: 18 = 3 rounds × 6 slots. Use only the slice for this race's round.
+    const OBS_PER_CONTEXT = 6;
     const roundOffset = (currentRace.raceNumber - 1) * OBS_PER_CONTEXT;
     const hmmSlotProbs = new Float64Array(6);
     for (let i = 0; i < OBS_PER_CONTEXT; i++) {
-        const slotIndex = Math.floor(i / 3);
         const prob = aggregatedProbs[roundOffset + i];
         if (prob !== undefined) {
-            const current = hmmSlotProbs[slotIndex] ?? 0;
-            hmmSlotProbs[slotIndex] = current + prob;
+            hmmSlotProbs[i] = prob;
         }
     }
 
@@ -41,16 +38,15 @@ export function predictRace(currentRace: Race, stats: StatsResult, aggregatedPro
     for (let s = 0; s < 6; s++) {
         const slot = s + 1;
         const payout = currentRace.payouts[s] ?? 0;
-        const bucket = getPayoutBucket(payout);
         const hmmProb = hmmSlotProbs[s] ?? 0;
 
         // Retrieve multidimensional statistics
-        const bStat = stats.bucketMap[slot]?.[bucket];
+        const sStat = stats.slotMap[slot];
         const rStat = stats.roundMap[currentRace.raceNumber]?.[slot];
 
-        // Start with the base win rate for this slot in this payout bucket
-        // Fallback to the empirical prior from config for this slot if no bucket-specific data exists
-        let winRate = bStat?.winRate ?? config.empiricalWinRates?.[slot] ?? EQUAL_SLOT_PROBABILITY;
+        // Start with the base win rate for this slot
+        // Fallback to the empirical prior from config for this slot if no historical data exists
+        let winRate = sStat?.winRate ?? config.empiricalWinRates?.[slot] ?? EQUAL_SLOT_PROBABILITY;
 
         // Blend in Round context (25% weight) if we have enough samples.
         // A threshold of 2 captures early round-specific momentum.

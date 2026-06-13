@@ -6,7 +6,7 @@
  * Hidden Markov Models (HMM) trained in parallel to predict race outcomes.
  */
 
-import { calculateEmpiricalWinRates, calculateStats, getPayoutBucket, parseLines, updateStats, loadRaces } from "../shared/utils";
+import { calculateEmpiricalWinRates, calculateStats, parseLines, updateStats, loadRaces } from "../shared/utils";
 import { predictRace } from "../core/prediction-engine";
 import type { BacktestConfig, Race, StatsResult } from "../shared/types";
 import { WorkerPool } from "../workers/worker-pool";
@@ -15,14 +15,13 @@ import { printHeader, printRow, printSummary } from "./result-printer";
 import { printHmmDiagnostics, type DiagnosticSample } from "./hmm-diagnostics";
 import { parseBacktestArgs, BACKTEST_USAGE } from "./backtest-args";
 
-const OBS_PER_CONTEXT = 18; // 6 slots × 3 buckets
+const OBS_PER_CONTEXT = 6; // 6 slots per round
 
-/** Builds the observation sequence from history (encoding: round/slot/bucket). */
+/** Builds the observation sequence from history (encoding: round/slot). */
 function buildInitialSequence(history: Race[]): number[] {
     return history.map((r) => {
         if (r.winningSlot === null || r.winningPayout === null) return -1;
-        const bucket = getPayoutBucket(r.winningPayout);
-        return (r.raceNumber - 1) * OBS_PER_CONTEXT + (r.winningSlot - 1) * 3 + bucket;
+        return (r.raceNumber - 1) * OBS_PER_CONTEXT + (r.winningSlot - 1);
     });
 }
 
@@ -193,8 +192,7 @@ async function runBacktest(prevFile: string, currFile: string, config: BacktestC
             printRow(currentRace, bets, currentRace.winningSlot, currentRace.winningPayout, score, raceProfit, stats.totalProfit, status, consensusRegime);
 
             if (!isPending) {
-                const bucket = getPayoutBucket(currentRace.winningPayout!);
-                sequence.push((currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1) * 3 + bucket);
+                sequence.push((currentRace.raceNumber - 1) * OBS_PER_CONTEXT + (currentRace.winningSlot! - 1));
                 updateStats(currentStats, currentRace, config);
             } else {
                 sequence.push(-1);

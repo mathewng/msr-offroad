@@ -35,16 +35,6 @@ export interface Race {
 }
 
 /**
- * Statistics for a specific payout bucket.
- * Buckets are used to group similar payout ranges (e.g. favored vs longshots).
- */
-export interface BucketStat {
-    occurrences: number; // Number of times a slot had a payout in this specific bucket
-    wins: number; // Number of times it won while in this bucket
-    winRate: number; // Probability of winning (smoothed proportion)
-}
-
-/**
  * General statistics for a specific slot.
  */
 export interface SlotStat {
@@ -60,8 +50,6 @@ export interface SlotStat {
  * Contains multidimensional win rate perspectives.
  */
 export interface StatsResult {
-    /** Maps slot (1-6) to its per-bucket stats */
-    bucketMap: Record<number, Record<number, BucketStat>>;
     /** Maps slot (1-6) to its overall historical stats */
     slotMap: Record<number, SlotStat>;
     /** Maps venue name to slot stats for that venue */
